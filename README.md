@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Book Walker
 
-## Getting Started
+Multi-user reading tracker for manga/manhwa/manhua, light novels, and books. Track page progress, rate titles, and manage a shared catalog as an admin.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Next.js (App Router) + TypeScript
+- Tailwind CSS (dark UI)
+- Auth.js (Google + GitHub OAuth)
+- PostgreSQL + Prisma
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **Install dependencies**
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+   ```bash
+   npm install
+   ```
 
-## Learn More
+2. **Configure environment**
 
-To learn more about Next.js, take a look at the following resources:
+   Copy `.env.example` to `.env` and fill in values:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+   ```bash
+   cp .env.example .env
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+   | Variable | Description |
+   | --- | --- |
+   | `DATABASE_URL` | PostgreSQL connection string |
+   | `AUTH_SECRET` | Random secret (`openssl rand -base64 32`) |
+   | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google OAuth credentials |
+   | `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET` | GitHub OAuth credentials |
+   | `ADMIN_EMAILS` | Comma-separated emails that receive admin role |
 
-## Deploy on Vercel
+3. **OAuth apps**
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+   - Google: [Google Cloud Console](https://console.cloud.google.com/apis/credentials) — authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
+   - GitHub: [Developer settings](https://github.com/settings/developers) — callback URL: `http://localhost:3000/api/auth/callback/github`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+4. **Database**
+
+   ```bash
+   npx prisma migrate dev --name init
+   ```
+
+5. **Run**
+
+   ```bash
+   npm run dev
+   ```
+
+   Open [http://localhost:3000](http://localhost:3000).
+
+## Roles
+
+- **User** — personal library, progress, ratings
+- **Admin** — full catalog CRUD; admin nav only appears after signing in with an email listed in `ADMIN_EMAILS`
+
+## Categories
+
+- Manga / Manhwa / Manhua
+- Light Novels
+- Books

@@ -1,0 +1,157 @@
+// Book Walker — Prisma schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum BookCategory {
+  MANGA
+  LIGHT_NOVEL
+  BOOK
+}
+
+enum ReadingStatus {
+  READING
+  COMPLETED
+  PLAN_TO_READ
+}
+
+enum PublicationStatus {
+  ONGOING
+  COMPLETED
+  HIATUS
+  CANCELLED
+  UNKNOWN
+}
+
+model User {
+  id                  String     @id @default(cuid())
+  name                String?    @unique
+  email               String?    @unique
+  emailVerified       DateTime?
+  image               String?
+  role                Role       @default(USER)
+  hideAdultContent    Boolean    @default(true)
+  onboardingComplete  Boolean    @default(false)
+  accounts            Account[]
+  sessions            Session[]
+  userBooks           UserBook[]
+  libraryCategories   LibraryCategory[]
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Book {
+  id         String       @id @default(cuid())
+  title      String
+  summary    String       @db.Text
+  coverUrl   String
+  totalPages Int
+  category   BookCategory
+  artist     String?
+  author     String?
+  genres     String[]     @default([])
+  sourceName         String?
+  sourceUrl          String?
+  externalId         String?
+  publicationStatus  PublicationStatus @default(UNKNOWN)
+  lastSyncedAt       DateTime?
+  isAdult            Boolean           @default(false)
+  coverCorrupted     Boolean           @default(false)
+  userBooks  UserBook[]
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([title])
+  @@index([isAdult, category])
+  @@index([publicationStatus])
+}
+
+model UserBook {
+  id          String        @id @default(cuid())
+  userId      String
+  bookId      String
+  currentPage Int           @default(0)
+  rating      Float?
+  status      ReadingStatus @default(PLAN_TO_READ)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book        Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  categories  UserBookCategory[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([userId, bookId])
+  @@index([userId, updatedAt])
+  @@index([userId, status])
+  @@index([bookId])
+}
+
+model LibraryCategory {
+  id         String             @id @default(cuid())
+  userId     String
+  name       String
+  slug       String
+  sortOrder  Int                @default(0)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userBooks  UserBookCategory[]
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@unique([userId, slug])
+  @@index([userId, sortOrder])
+}
+
+model UserBookCategory {
+  userBookId String
+  categoryId String
+  userBook   UserBook         @relation(fields: [userBookId], references: [id], onDelete: Cascade)
+  category   LibraryCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([userBookId, categoryId])
+  @@index([categoryId])
+}
