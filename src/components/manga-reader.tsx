@@ -158,7 +158,7 @@ export function MangaReader({
     let cancelled = false;
     completedRef.current = false;
     const params = dataSaver ? "?dataSaver=1" : "";
-    fetch(`/api/books/${bookId}/chapters/${chapterId}/pages${params}`)
+    fetch(`/api/books/${bookId}/chapters/${encodeURIComponent(chapterId)}/pages${params}`)
       .then(async (res) => {
         const json = (await res.json()) as {
           pages?: PagePayload[];
@@ -230,7 +230,7 @@ export function MangaReader({
   const goToChapter = useCallback(
     (id: string | null | undefined) => {
       if (!id) return;
-      router.push(`/read/${bookId}/${id}`);
+      router.push(`/read/${bookId}/${encodeURIComponent(id)}`);
     },
     [bookId, router],
   );

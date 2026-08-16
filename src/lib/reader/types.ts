@@ -28,6 +28,28 @@ export type ReaderPage = {
   url: string;
 };
 
+export type ResolvedManga = {
+  manga: ReaderManga;
+  chapters: ReaderChapter[];
+  sourceKey: string;
+  sourceName: string;
+};
+
+export type CatalogCandidate = {
+  id: string;
+  title: string;
+  summary: string;
+  coverUrl: string | null;
+  publicationStatus: import("@prisma/client").PublicationStatus;
+  year: number | null;
+  genres: string[];
+  isAdult: boolean;
+  author: string | null;
+  artist: string | null;
+  lastChapter: string | null;
+  url: string;
+};
+
 export function continueChapterIndex(
   currentPage: number,
   chapterCount: number,

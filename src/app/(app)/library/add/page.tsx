@@ -2,10 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { FilterChip } from "@/components/filter-chip";
 import { StoreBookGrid } from "@/components/store-book-grid";
 import { StoreBookSearch } from "@/components/store-book-search";
 import { StoreFilters } from "@/components/store-filters";
 import { StorePagination } from "@/components/store-pagination";
+import { StoreSourceNav } from "@/components/store-source-nav";
 import { CATEGORIES } from "@/lib/categories";
 import { parseStoreContentFilter } from "@/lib/adult-content";
 import {
@@ -15,6 +17,7 @@ import {
 } from "@/lib/publication";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { getBrowsableSources } from "@/lib/sources/browsable";
 import {
   parseStorePage,
   STORE_PAGE_SIZE,
@@ -97,7 +100,7 @@ export default async function BrowseStorePage({
   });
 
   const requestedPage = parseStorePage(pageParam);
-  const [total, books, genres] = await Promise.all([
+  const [total, books, genres, sources] = await Promise.all([
     prisma.book.count({ where }),
     fetchStoreBooks(
       where,
@@ -106,6 +109,7 @@ export default async function BrowseStorePage({
       STORE_PAGE_SIZE,
     ),
     genresPromise,
+    getBrowsableSources(),
   ]);
   const pageCount = storePageCount(total);
   const page = Math.min(requestedPage, pageCount);
@@ -147,7 +151,8 @@ export default async function BrowseStorePage({
       <div>
         <h1 className="text-3xl font-bold text-zinc-50">Browse store</h1>
         <p className="mt-1 text-zinc-400">
-          Add recognized titles to your personal library.
+          Add recognized titles to your personal library, or pick a source to
+          browse live listings.
           {total > 0 && (
             <span className="ml-1 text-zinc-500">
               ({total.toLocaleString()} available
@@ -158,6 +163,8 @@ export default async function BrowseStorePage({
           )}
         </p>
       </div>
+
+      <StoreSourceNav sources={sources} />
 
       <Suspense>
         <StoreBookSearch defaultValue={query} />
@@ -283,28 +290,5 @@ export default async function BrowseStorePage({
         </>
       )}
     </div>
-  );
-}
-
-function FilterChip({
-  href,
-  active,
-  children,
-}: {
-  href: string;
-  active: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      className={
-        active
-          ? "rounded-full bg-violet-600 px-3 py-1.5 text-sm font-medium text-white"
-          : "rounded-full border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-      }
-    >
-      {children}
-    </Link>
   );
 }

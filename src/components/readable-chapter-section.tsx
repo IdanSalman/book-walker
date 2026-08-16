@@ -1,5 +1,5 @@
 import { ChapterList } from "@/components/chapter-list";
-import { getMangaWithChapters } from "@/lib/reader/mangadex-source";
+import { getMangaWithChapters } from "@/lib/reader/resolve";
 import type { ReaderChapter } from "@/lib/reader/types";
 
 export async function ReadableChapterSection({
@@ -10,16 +10,19 @@ export async function ReadableChapterSection({
     id: string;
     title: string;
     sourceUrl: string | null;
+    sourceName: string | null;
     externalId: string | null;
   };
   currentPage: number;
 }) {
   let chapters: ReaderChapter[] | null = null;
+  let sourceName: string | null = null;
   let errorMessage: string | null = null;
 
   try {
     const resolved = await getMangaWithChapters(book);
     chapters = resolved.chapters;
+    sourceName = resolved.sourceName;
   } catch (error) {
     errorMessage =
       error instanceof Error
@@ -45,6 +48,7 @@ export async function ReadableChapterSection({
       bookId={book.id}
       chapters={chapters}
       currentPage={currentPage}
+      sourceName={sourceName}
     />
   );
 }

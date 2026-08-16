@@ -215,6 +215,7 @@ def main() -> None:
                     ),
                     "tachiyomiStatus": m["status"],
                     "chaptersRead": m["chaptersRead"],
+                    "dateAdded": m["dateAdded"],
                     "categoryNames": m["categoryNames"],
                     "genre": m["genre"],
                 }

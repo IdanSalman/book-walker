@@ -6,6 +6,7 @@ import { Shield } from "lucide-react";
 import { AdminAdultToggle } from "@/components/admin-adult-toggle";
 import { AdminBookForm } from "@/components/admin-book-form";
 import { AdminCoverCorruptedToggle } from "@/components/admin-cover-corrupted-toggle";
+import { AdminRepairCoverButton } from "@/components/admin-repair-cover-button";
 import { AdminSyncMetadataButton } from "@/components/admin-sync-metadata-button";
 import { DeleteBookButton } from "@/components/delete-book-button";
 
@@ -44,6 +45,7 @@ export function AdminBookPanel({
         coverCorrupted={book.coverCorrupted}
         onUpdated={onUpdated}
       />
+      <AdminRepairCoverButton book={book} onUpdated={onUpdated} />
       <AdminSyncMetadataButton book={book} onUpdated={onUpdated} />
 
       <details className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">

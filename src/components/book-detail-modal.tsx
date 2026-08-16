@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
@@ -10,11 +9,11 @@ import { X } from "lucide-react";
 
 import { AddToLibraryButton } from "@/components/add-to-library-button";
 import { AdminBookPanel } from "@/components/admin-book-panel";
+import { CoverImage } from "@/components/cover-image";
 import { StarsDisplay } from "@/components/stars";
 import { UserBookForm } from "@/components/user-book-form";
 import { Badge } from "@/components/ui/badge";
 import { categoryLabel, categorySlug } from "@/lib/categories";
-import { coverDisplayUrl } from "@/lib/cover-url";
 import {
   PUBLICATION_STATUS_LABELS,
   isOngoingPublication,
@@ -211,14 +210,12 @@ function BookDetailBody({
     <div className="grid gap-6 sm:grid-cols-[160px_1fr]">
       <div className="space-y-3">
         <div className="relative mx-auto aspect-[2/3] w-full max-w-[160px] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
-          <Image
-            src={coverDisplayUrl(book.coverUrl, 512)}
+          <CoverImage
+            src={book.coverUrl}
             alt={book.title}
-            fill
-            className="object-cover"
             sizes="160px"
-            unoptimized
             priority
+            size={512}
           />
         </div>
         <Link

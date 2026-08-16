@@ -4,7 +4,11 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
-import { scanAllPngCovers, scanBookCovers } from "@/lib/actions/admin";
+import {
+  repairMissingCoversAction,
+  scanAllPngCovers,
+  scanBookCovers,
+} from "@/lib/actions/admin";
 
 export function AdminScanCoversButtons({ bookIds }: { bookIds: string[] }) {
   const router = useRouter();
@@ -46,9 +50,19 @@ export function AdminScanCoversButtons({ bookIds }: { bookIds: string[] }) {
         >
           {pending ? "Scanning all PNGs…" : "Scan all PNG covers in catalog"}
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={pending}
+          onClick={() => runScan(() => repairMissingCoversAction())}
+        >
+          {pending ? "Repairing…" : "Repair missing covers from sources"}
+        </Button>
       </div>
       <p className="text-xs text-zinc-500">
         Checks PNG URLs only. Broken images are hidden from the store automatically.
+        Repair looks up those titles on MangaDex, Asura Scans, and Weeb Central, assigns
+        a source when the book has none, then reloads the new cover.
         For large catalogs, prefer{" "}
         <code className="rounded bg-zinc-800 px-1 py-0.5">npm run scan:covers</code>.
       </p>

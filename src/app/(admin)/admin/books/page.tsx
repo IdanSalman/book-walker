@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { Suspense } from "react";
 import type { Prisma } from "@prisma/client";
@@ -12,15 +11,16 @@ import { AdminFilters } from "@/components/admin-filters";
 import { AdminPagination } from "@/components/admin-pagination";
 import { AdminScanCoversButtons } from "@/components/admin-scan-covers-button";
 import { AdminSyncOngoingButtons } from "@/components/admin-sync-ongoing-button";
+import { CoverImage } from "@/components/cover-image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  adminBooksHref,
   adminPageCount,
   ADMIN_PAGE_SIZE,
   parseAdminPage,
 } from "@/lib/admin-pagination";
 import { categoryLabel } from "@/lib/categories";
-import { coverDisplayUrl } from "@/lib/cover-url";
 import {
   PUBLICATION_STATUS_LABELS,
   pageCountLabel,
@@ -45,6 +45,7 @@ export default async function AdminBooksPage({
     sort?: string;
     corruptedCovers?: string;
     publication?: string;
+    source?: string;
   }>;
 }) {
   const {
@@ -55,12 +56,14 @@ export default async function AdminBooksPage({
     sort: sortParam,
     corruptedCovers: corruptedCoversParam,
     publication: publicationParam,
+    source: sourceParam,
   } = await searchParams;
   const query = q?.trim() ?? "";
   const hideAdult = hideAdultParam === "1" || hideAdultParam === "true";
   const showCorrupted =
     corruptedCoversParam === "1" || corruptedCoversParam === "true";
   const genre = genreParam?.trim() || undefined;
+  const source = sourceParam?.trim() || undefined;
   const sort = parseStoreSort(sortParam);
   const publication = parsePublicationFilter(publicationParam);
 
@@ -69,6 +72,9 @@ export default async function AdminBooksPage({
     ...(showCorrupted ? { coverCorrupted: true } : {}),
     ...(genre ? { genres: { has: genre } } : {}),
     ...(publication ? { publicationStatus: publication } : {}),
+    ...(source
+      ? { sourceName: { contains: source, mode: "insensitive" as const } }
+      : {}),
     ...(query
       ? {
           OR: [
@@ -104,6 +110,7 @@ export default async function AdminBooksPage({
           <p className="mt-1 text-zinc-400">
             {total.toLocaleString()} book{total === 1 ? "" : "s"}
             {showCorrupted ? " with corrupted covers" : " in the store"}
+            {source ? ` from ${source}` : ""}
             {genre ? ` in genre “${genre}”` : ""}
             {publication ? ` · ${PUBLICATION_STATUS_LABELS[publication].toLowerCase()}` : ""}.
             {corruptedCount > 0 && !showCorrupted && (
@@ -118,6 +125,20 @@ export default async function AdminBooksPage({
           <Button>Add book</Button>
         </Link>
       </div>
+
+      {source && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-violet-900/40 bg-violet-950/20 px-4 py-2 text-sm text-violet-200">
+          <span>
+            Filtered to the <strong className="font-medium">{source}</strong> source.
+          </span>
+          <Link
+            href={adminBooksHref({ q: query || undefined, sort })}
+            className="text-violet-300 underline-offset-2 hover:underline"
+          >
+            Clear
+          </Link>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-stretch gap-4">
         <Suspense>
@@ -199,13 +220,11 @@ export default async function AdminBooksPage({
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="relative h-12 w-8 shrink-0 overflow-hidden rounded bg-zinc-800">
-                          <Image
-                            src={coverDisplayUrl(book.coverUrl, 256)}
+                          <CoverImage
+                            src={book.coverUrl}
                             alt=""
-                            fill
-                            className="object-cover"
                             sizes="32px"
-                            unoptimized
+                            size={256}
                           />
                         </div>
                         <div className="min-w-0">
@@ -278,6 +297,7 @@ export default async function AdminBooksPage({
             sort={sort}
             corruptedCovers={showCorrupted || undefined}
             publication={publicationParam}
+            source={source}
           />
         </>
       )}

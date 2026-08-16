@@ -5,7 +5,15 @@ import { useTransition } from "react";
 
 import { Input } from "@/components/ui/input";
 
-export function StoreBookSearch({ defaultValue }: { defaultValue: string }) {
+export function StoreBookSearch({
+  defaultValue,
+  actionPath = "/library/add",
+  placeholder = "Search by title, author, or artist…",
+}: {
+  defaultValue: string;
+  actionPath?: string;
+  placeholder?: string;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
@@ -23,14 +31,14 @@ export function StoreBookSearch({ defaultValue }: { defaultValue: string }) {
           else params.delete("q");
           params.delete("page");
           const query = params.toString();
-          router.push(query ? `/library/add?${query}` : "/library/add");
+          router.push(query ? `${actionPath}?${query}` : actionPath);
         });
       }}
     >
       <Input
         name="q"
         defaultValue={defaultValue}
-        placeholder="Search by title, author, or artist…"
+        placeholder={placeholder}
         disabled={pending}
       />
     </form>

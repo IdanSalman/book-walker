@@ -37,7 +37,9 @@ export async function addToLibrary(bookId: string): Promise<ActionState> {
       bookId,
       status: "PLAN_TO_READ",
       currentPage: 0,
+      addedAt: new Date(),
     },
+    // Keep addedAt / progress if the title is already in the library.
     update: {},
   });
 

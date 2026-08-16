@@ -30,7 +30,7 @@ export function AppNav({ session }: { session: Session }) {
               Browse store
             </NavLink>
             {isAdmin && (
-              <NavLink href="/admin/books" icon={<Shield className="h-4 w-4" />}>
+              <NavLink href="/admin" icon={<Shield className="h-4 w-4" />}>
                 Admin
               </NavLink>
             )}
@@ -62,7 +62,7 @@ export function AppNav({ session }: { session: Session }) {
           Store
         </NavLink>
         {isAdmin && (
-          <NavLink href="/admin/books" icon={<Shield className="h-4 w-4" />}>
+          <NavLink href="/admin" icon={<Shield className="h-4 w-4" />}>
             Admin
           </NavLink>
         )}

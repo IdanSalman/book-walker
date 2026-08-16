@@ -34,6 +34,19 @@ enum PublicationStatus {
   UNKNOWN
 }
 
+enum SourceKind {
+  API
+  SCRAPER
+  METADATA
+}
+
+enum SourceHealth {
+  UNKNOWN
+  ONLINE
+  DEGRADED
+  OFFLINE
+}
+
 model User {
   id                  String     @id @default(cuid())
   name                String?    @unique
@@ -112,6 +125,33 @@ model Book {
   @@index([publicationStatus])
 }
 
+/// A website the catalog fetches from (MangaDex, Asura Scans, …).
+model FetchSource {
+  id               String       @id @default(cuid())
+  key              String       @unique
+  name             String
+  baseUrl          String
+  kind             SourceKind   @default(SCRAPER)
+  language         String       @default("en")
+  enabled          Boolean      @default(true)
+  priority         Int          @default(0)
+  supportsSearch   Boolean      @default(false)
+  supportsMetadata Boolean      @default(false)
+  supportsReading  Boolean      @default(false)
+  isAdultSource    Boolean      @default(false)
+  notes            String?      @db.Text
+  health           SourceHealth @default(UNKNOWN)
+  lastCheckedAt    DateTime?
+  lastLatencyMs    Int?
+  lastError        String?      @db.Text
+  lastImportAt     DateTime?
+  importedCount    Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([enabled, priority])
+}
+
 model UserBook {
   id          String        @id @default(cuid())
   userId      String
@@ -119,6 +159,9 @@ model UserBook {
   currentPage Int           @default(0)
   rating      Float?
   status      ReadingStatus @default(PLAN_TO_READ)
+  /// When the title was added to this user's library. Survives progress
+  /// updates and catalog source migrations; only set on insert or import.
+  addedAt     DateTime      @default(now())
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   book        Book          @relation(fields: [bookId], references: [id], onDelete: Cascade)
   categories  UserBookCategory[]
@@ -127,6 +170,7 @@ model UserBook {
 
   @@unique([userId, bookId])
   @@index([userId, updatedAt])
+  @@index([userId, addedAt])
   @@index([userId, status])
   @@index([bookId])
 }

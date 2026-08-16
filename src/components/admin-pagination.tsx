@@ -15,6 +15,7 @@ type AdminPaginationProps = {
   sort?: string;
   corruptedCovers?: boolean;
   publication?: string;
+  source?: string;
 };
 export function AdminPagination({
   total,
@@ -25,13 +26,22 @@ export function AdminPagination({
   sort,
   corruptedCovers,
   publication,
+  source,
 }: AdminPaginationProps) {
   const totalPages = adminPageCount(total);
   if (totalPages <= 1) return null;
 
   const start = (page - 1) * ADMIN_PAGE_SIZE + 1;
   const end = Math.min(page * ADMIN_PAGE_SIZE, total);
-  const hrefParams = { q, hideAdult, genre, sort, corruptedCovers, publication };
+  const hrefParams = {
+    q,
+    hideAdult,
+    genre,
+    sort,
+    corruptedCovers,
+    publication,
+    source,
+  };
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 border-t border-zinc-800 pt-4">
       <p className="text-sm text-zinc-500">

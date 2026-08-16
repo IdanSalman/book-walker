@@ -1,9 +1,9 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AdminBookForm } from "@/components/admin-book-form";
 import { AdminSyncMetadataButton } from "@/components/admin-sync-metadata-button";
+import { CoverImage } from "@/components/cover-image";
 import { DeleteBookButton } from "@/components/delete-book-button";
 import { Badge } from "@/components/ui/badge";
 import { categoryLabel } from "@/lib/categories";
@@ -41,14 +41,12 @@ export default async function EditBookPage({
       <section className="grid gap-6 lg:grid-cols-[220px_1fr]">
         <div className="space-y-4">
           <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
-            <Image
+            <CoverImage
               src={book.coverUrl}
               alt={book.title}
-              fill
-              className="object-cover"
               sizes="220px"
-              unoptimized
               priority
+              size={512}
             />
           </div>
           <dl className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 text-sm">

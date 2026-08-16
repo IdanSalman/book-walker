@@ -51,7 +51,8 @@ export function AdminSyncMetadataButton({
       </p>
       {book.lastSyncedAt && (
         <p className="text-xs text-zinc-600">
-          Last synced: {new Date(book.lastSyncedAt).toLocaleString()}
+          Last synced:{" "}
+          {new Date(book.lastSyncedAt).toLocaleString("en-US")}
         </p>
       )}
       {message && <p className="text-sm text-emerald-400">{message}</p>}

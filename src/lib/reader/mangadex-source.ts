@@ -7,7 +7,13 @@
 
 import { mangaDexIdFromUrl } from "@/lib/publication";
 import { MD_UUID_RE, mangadexFetch } from "@/lib/mangadex-api";
-import type { ReaderChapter, ReaderManga, ReaderPage } from "@/lib/reader/types";
+import { normalizeTitle, titlesMatch } from "@/lib/reader/source-id";
+import type {
+  ReaderChapter,
+  ReaderManga,
+  ReaderPage,
+  ResolvedManga,
+} from "@/lib/reader/types";
 
 const CHAPTER_LIMIT = 100;
 
@@ -65,12 +71,7 @@ type AtHomeResponse = {
   };
 };
 
-export type ResolvedManga = {
-  manga: ReaderManga;
-  chapters: ReaderChapter[];
-};
-
-function localizedTitle(title: LocalizedString | undefined): string {
+export function localizedTitle(title: LocalizedString | undefined): string {
   if (!title) return "";
   return (
     title.en ||
@@ -88,11 +89,7 @@ function allTitles(attributes: MangaAttributes | undefined): string[] {
   for (const alt of attributes.altTitles ?? []) {
     titles.push(...Object.values(alt));
   }
-  return titles.map((t) => t.trim().toLowerCase()).filter(Boolean);
-}
-
-function normalizeTitle(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return titles.map((t) => t.trim()).filter(Boolean);
 }
 
 function contentRatingParams(): string {
@@ -174,8 +171,6 @@ async function searchMangaDex(
   const results = json.data ?? [];
   if (results.length === 0) return null;
 
-  const needle = normalizeTitle(title);
-
   if (anilistId) {
     const byAnilist = results.find(
       (manga) => manga.attributes?.links?.al === anilistId,
@@ -184,11 +179,25 @@ async function searchMangaDex(
   }
 
   const exact = results.find((manga) =>
-    allTitles(manga.attributes).some(
-      (candidate) => normalizeTitle(candidate) === needle,
+    allTitles(manga.attributes).some((candidate) =>
+      titlesMatch(candidate, title),
     ),
   );
-  return exact?.id ?? null;
+  if (exact) return exact.id;
+
+  const needle = normalizeTitle(title);
+  const fuzzy = results.find((manga) =>
+    allTitles(manga.attributes).some((candidate) => {
+      const value = normalizeTitle(candidate);
+      return (
+        value.length > 0 &&
+        (value.includes(needle) || needle.includes(value))
+      );
+    }),
+  );
+  if (fuzzy) return fuzzy.id;
+
+  return results.length === 1 || needle.length >= 8 ? results[0]?.id ?? null : null;
 }
 
 export async function resolveMangaDexManga(book: {
@@ -207,9 +216,7 @@ export async function resolveMangaDexManga(book: {
 
   const foundId = await searchMangaDex(book.title, anilistId);
   if (!foundId) {
-    throw new Error(
-      "No MangaDex listing was found for this title. Reading currently uses the MangaDex source, the same public API Mihon uses.",
-    );
+    throw new Error("No MangaDex listing was found for this title.");
   }
   return fetchManga(foundId);
 }
@@ -266,7 +273,12 @@ export async function getMangaWithChapters(book: {
 }): Promise<ResolvedManga> {
   const manga = await resolveMangaDexManga(book);
   const chapters = await getChapterList(manga.id);
-  return { manga, chapters };
+  return {
+    manga,
+    chapters,
+    sourceKey: "mangadex",
+    sourceName: "MangaDex",
+  };
 }
 
 export function isChapterId(value: string): boolean {

@@ -1,7 +1,13 @@
 import { auth } from "@/lib/auth";
-import { isMangaDexImageHost } from "@/lib/mangadex-api";
+import {
+  imageRefererForHost,
+  isAllowedReaderImageHost,
+} from "@/lib/reader/resolve";
+import { fetchKeepingReferer } from "@/lib/reader/source-fetch";
 
 const ALLOWED_PROTOCOLS = new Set(["https:"]);
+const BROWSER_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
 function unsafeHostname(hostname: string): boolean {
   if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
@@ -31,21 +37,44 @@ export async function GET(request: Request) {
     return new Response("Invalid image URL", { status: 400 });
   }
 
+  let requestedReferer: URL | null = null;
+  const rawReferer = new URL(request.url).searchParams.get("r");
+  if (rawReferer) {
+    try {
+      requestedReferer = new URL(rawReferer);
+      if (
+        requestedReferer.protocol !== "https:" ||
+        unsafeHostname(requestedReferer.hostname)
+      ) {
+        requestedReferer = null;
+      }
+    } catch {
+      requestedReferer = null;
+    }
+  }
+
   if (
     !ALLOWED_PROTOCOLS.has(target.protocol) ||
-    !isMangaDexImageHost(target.hostname) ||
+    !(await isAllowedReaderImageHost(
+      target.hostname,
+      requestedReferer?.hostname,
+    )) ||
     unsafeHostname(target.hostname)
   ) {
     return new Response("Blocked host", { status: 400 });
   }
 
-  const upstream = await fetch(target, {
+  const referer = await imageRefererForHost(target.hostname);
+  const pageReferer = requestedReferer
+    ? `${requestedReferer.origin}/`
+    : referer;
+
+  const upstream = await fetchKeepingReferer(target.toString(), {
     headers: {
-      Accept: "image/*,*/*",
-      "User-Agent":
-        "BookWalker/0.1 (personal library reader; Mihon-compatible MangaDex source)",
+      Accept: "image/avif,image/webp,image/png,image/jpeg,image/*,*/*",
+      "User-Agent": BROWSER_UA,
+      ...(pageReferer ? { Referer: pageReferer } : {}),
     },
-    cache: "no-store",
   });
 
   if (!upstream.ok) {

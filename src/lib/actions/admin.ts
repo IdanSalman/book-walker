@@ -8,6 +8,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { isPngCoverUrl, scanPngCoverStatuses } from "@/lib/cover-validation";
 import { requireAdmin } from "@/lib/session";
+import {
+  repairBookCover,
+  repairMissingCovers,
+} from "@/lib/sources/repair-cover";
 import { syncBookMetadata } from "@/lib/sync/book-metadata";
 
 function parseGenres(value: FormDataEntryValue | null): string[] {
@@ -193,6 +197,72 @@ export async function scanAllPngCovers(): Promise<ActionState> {
     success: true,
     message: `Scanned ${pngCount} PNG covers: ${ok} OK, ${corrupted} corrupted`,
   };
+}
+
+export async function repairMissingCoversAction(): Promise<ActionState> {
+  await requireAdmin();
+
+  const result = await repairMissingCovers();
+  if (result.scanned === 0) {
+    return { error: "No titles with missing or broken covers" };
+  }
+
+  revalidateCatalog();
+
+  const parts = [
+    `Checked ${result.scanned} title${result.scanned === 1 ? "" : "s"}`,
+  ];
+  if (result.repaired > 0) {
+    parts.push(`replaced ${result.repaired} cover${result.repaired === 1 ? "" : "s"}`);
+  }
+  if (result.reloaded > 0) {
+    parts.push(
+      `reloaded ${result.reloaded} existing image${result.reloaded === 1 ? "" : "s"}`,
+    );
+  }
+  if (result.assigned > 0) {
+    parts.push(`assigned ${result.assigned} source${result.assigned === 1 ? "" : "s"}`);
+  }
+  if (result.failed > 0) {
+    parts.push(`${result.failed} still missing`);
+  }
+
+  return { success: true, message: parts.join(", ") };
+}
+
+export async function repairBookCoverAction(bookId: string): Promise<ActionState> {
+  await requireAdmin();
+
+  const book = await prisma.book.findUnique({
+    where: { id: bookId },
+    select: {
+      id: true,
+      title: true,
+      coverUrl: true,
+      coverCorrupted: true,
+      sourceName: true,
+      sourceUrl: true,
+    },
+  });
+  if (!book) return { error: "Book not found" };
+
+  const outcome = await repairBookCover(book);
+  revalidateCatalog(bookId);
+
+  if (outcome.error && !outcome.repaired && !outcome.reloaded) {
+    return { error: outcome.error };
+  }
+
+  if (outcome.sourceAssigned) {
+    return {
+      success: true,
+      message: `Found a cover on ${outcome.sourceName} and assigned that source`,
+    };
+  }
+  if (outcome.repaired) {
+    return { success: true, message: "Replaced the cover from another source" };
+  }
+  return { success: true, message: "Existing cover loaded successfully" };
 }
 
 export async function setCoverCorrupted(

@@ -9,6 +9,8 @@ import { parsePublicationFilter } from "@/lib/publication";
 
 export type LibrarySort =
   | "updated-desc"
+  | "added-desc"
+  | "added-asc"
   | "title-asc"
   | "title-desc"
   | "rating-desc"
@@ -16,6 +18,8 @@ export type LibrarySort =
 
 export const LIBRARY_SORT_OPTIONS: { value: LibrarySort; label: string }[] = [
   { value: "updated-desc", label: "Recently updated" },
+  { value: "added-desc", label: "Date added (newest)" },
+  { value: "added-asc", label: "Date added (oldest)" },
   { value: "title-asc", label: "Title (A–Z)" },
   { value: "title-desc", label: "Title (Z–A)" },
   { value: "rating-desc", label: "Highest rated" },
@@ -92,6 +96,10 @@ export function libraryOrderBy(
       return [{ rating: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }];
     case "progress-desc":
       return { currentPage: "desc" };
+    case "added-desc":
+      return [{ addedAt: "desc" }, { book: { title: "asc" } }];
+    case "added-asc":
+      return [{ addedAt: "asc" }, { book: { title: "asc" } }];
     default:
       return { updatedAt: "desc" };
   }

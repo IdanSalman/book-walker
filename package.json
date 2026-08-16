@@ -14,6 +14,8 @@
     "db:import-library": "node scripts/import-library.mjs",
     "db:backfill-publication": "node scripts/backfill-publication-status.mjs",
     "scan:covers": "node scripts/scan-cover-pngs.mjs",
+    "repair:covers": "npx tsx --env-file=.env scripts/repair-covers.mts",
+    "repair:covers:library": "npx tsx --env-file=.env scripts/repair-covers.mts --library",
     "postinstall": "prisma generate"
   },
   "dependencies": {

@@ -1,16 +1,15 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { AddToLibraryButton } from "@/components/add-to-library-button";
 import { AdminBookPanel } from "@/components/admin-book-panel";
+import { CoverImage } from "@/components/cover-image";
 import { ReadableChapterSection } from "@/components/readable-chapter-section";
 import { StarsDisplay } from "@/components/stars";
 import { UserBookForm } from "@/components/user-book-form";
 import { Badge } from "@/components/ui/badge";
 import { categoryLabel, categorySlug } from "@/lib/categories";
-import { coverDisplayUrl } from "@/lib/cover-url";
 import { shouldHideAdultBook } from "@/lib/adult-content";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
@@ -85,15 +84,12 @@ export default async function BookDetailPage({
     <div className="grid gap-8 lg:grid-cols-[240px_1fr]">
       <div className="space-y-4">
         <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
-          <Image
-            src={coverDisplayUrl(book.coverUrl, 512)}
+          <CoverImage
+            src={book.coverUrl}
             alt={book.title}
-            fill
-            className="object-cover"
             sizes="240px"
-            unoptimized
             priority
-            fetchPriority="high"
+            size={512}
           />
         </div>
         <Link href={categoryHref} className="inline-block">

@@ -17,11 +17,13 @@ export function adminBooksHref(params: {
   sort?: string;
   corruptedCovers?: boolean;
   publication?: string;
+  source?: string;
 }): string {
   const search = new URLSearchParams();
   if (params.q) search.set("q", params.q);
   if (params.hideAdult) search.set("hideAdult", "1");
   if (params.genre) search.set("genre", params.genre);
+  if (params.source) search.set("source", params.source);
   if (params.corruptedCovers) search.set("corruptedCovers", "1");
   if (params.publication) search.set("publication", params.publication);
   if (params.sort && params.sort !== "title-asc") search.set("sort", params.sort);

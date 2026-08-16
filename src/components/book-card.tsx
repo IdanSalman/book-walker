@@ -1,12 +1,11 @@
-import Image from "next/image";
 import Link from "next/link";
 import type { Book, UserBook } from "@prisma/client";
 
+import { CoverImage } from "@/components/cover-image";
 import { StarsDisplay } from "@/components/stars";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { categoryLabel } from "@/lib/categories";
-import { coverDisplayUrl } from "@/lib/cover-url";
 import {
   PUBLICATION_STATUS_LABELS,
   isOngoingPublication,
@@ -43,7 +42,6 @@ export function BookCard({
   userBook,
   href,
   onSelect,
-  lazyCover,
   priority,
 }: BookCardProps) {
   const progress =
@@ -55,22 +53,16 @@ export function BookCard({
     (book.category === "MANGA" || book.category === "LIGHT_NOVEL") &&
     book.publicationStatus !== "UNKNOWN";
   const eager = Boolean(priority);
-  const lazy = !eager && lazyCover !== false;
 
   const content = (
     <article className="group flex h-full flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60 [content-visibility:auto] [contain-intrinsic-size:auto_28rem] transition hover:border-zinc-600 hover:bg-zinc-900">
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-zinc-800">
-        <Image
-          src={coverDisplayUrl(book.coverUrl, eager ? 512 : 256)}
+        <CoverImage
+          src={book.coverUrl}
           alt={book.title}
-          fill
-          className="object-cover transition group-hover:scale-105"
           sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 200px"
-          unoptimized
           priority={eager}
-          loading={lazy ? "lazy" : undefined}
-          fetchPriority={eager ? "high" : "low"}
-          decoding="async"
+          className="transition group-hover:scale-105"
         />
       </div>
       <div className="flex flex-1 flex-col gap-2 p-3">

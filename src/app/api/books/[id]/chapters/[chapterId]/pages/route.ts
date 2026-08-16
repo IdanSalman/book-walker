@@ -2,7 +2,8 @@ import { auth } from "@/lib/auth";
 import { shouldHideAdultBook } from "@/lib/adult-content";
 import { prisma } from "@/lib/prisma";
 import { canReadBook } from "@/lib/reader/access";
-import { getPageList, isChapterId } from "@/lib/reader/mangadex-source";
+import { getChapterPages, refererForSourceKey } from "@/lib/reader/resolve";
+import { decodeChapterId, isChapterId } from "@/lib/reader/source-id";
 
 export async function GET(
   request: Request,
@@ -17,7 +18,8 @@ export async function GET(
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id, chapterId } = await params;
+  const { id, chapterId: rawChapterId } = await params;
+  const chapterId = decodeURIComponent(rawChapterId);
   if (!isChapterId(chapterId)) {
     return Response.json({ error: "Invalid chapter" }, { status: 400 });
   }
@@ -48,11 +50,15 @@ export async function GET(
     new URL(request.url).searchParams.get("dataSaver") === "1";
 
   try {
-    const pages = await getPageList(chapterId, dataSaver);
+    const pages = await getChapterPages(chapterId, dataSaver);
+    const ref = decodeChapterId(chapterId);
+    const referer = ref ? await refererForSourceKey(ref.sourceKey) : undefined;
     return Response.json({
       pages: pages.map((page) => ({
         index: page.index,
-        url: `/api/reader/image?u=${encodeURIComponent(page.url)}`,
+        url: referer
+          ? `/api/reader/image?u=${encodeURIComponent(page.url)}&r=${encodeURIComponent(referer)}`
+          : `/api/reader/image?u=${encodeURIComponent(page.url)}`,
       })),
     });
   } catch (error) {

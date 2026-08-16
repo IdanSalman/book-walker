@@ -175,7 +175,29 @@ function pickBetterEntry(a, b) {
   return {
     ...winner,
     categoryNames: [...new Set([...realCategoryNames(a), ...realCategoryNames(b)])],
+    dateAdded: earliestDateAdded(a.dateAdded, b.dateAdded),
   };
+}
+
+/** Mihon stores dateAdded as epoch milliseconds (sometimes seconds). */
+function parseEpoch(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const ms = n < 1e12 ? n * 1000 : n;
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return null;
+  const year = date.getFullYear();
+  if (year < 2008 || date.getTime() > Date.now() + 86_400_000) return null;
+  return date;
+}
+
+function earliestDateAdded(a, b) {
+  const left = parseEpoch(a);
+  const right = parseEpoch(b);
+  if (left && right) return Math.min(left.getTime(), right.getTime());
+  if (left) return left.getTime();
+  if (right) return right.getTime();
+  return a ?? b ?? 0;
 }
 
 function dedupeByTitle(entries) {
@@ -475,11 +497,13 @@ async function main() {
     const publicationStatus = book.publicationStatus ?? publicationStatusFromBook(entry);
     const totalPages = Math.max(book.totalPages, entry.totalPages ?? 1, entry.chaptersRead ?? 0, 1);
     const currentPage = Math.min(Math.max(entry.chaptersRead ?? 0, 0), totalPages);
+    const addedAt = parseEpoch(entry.dateAdded);
     libraryRows.push({
       userId: user.id,
       bookId: book.id,
       currentPage,
       status: readingStatus(entry, publicationStatus),
+      ...(addedAt ? { addedAt } : {}),
     });
 
     const data = {};
@@ -499,11 +523,13 @@ async function main() {
     }
     const publicationStatus = publicationStatusFromBook(entry);
     const totalPages = Math.max(entry.totalPages ?? 1, 1);
+    const addedAt = parseEpoch(entry.dateAdded);
     libraryRows.push({
       userId: user.id,
       bookId,
       currentPage: Math.min(Math.max(entry.chaptersRead ?? 0, 0), totalPages),
       status: readingStatus(entry, publicationStatus),
+      ...(addedAt ? { addedAt } : {}),
     });
   }
 
@@ -526,7 +552,15 @@ async function main() {
           where: {
             userId_bookId: { userId: row.userId, bookId: row.bookId },
           },
-          create: row,
+          create: {
+            userId: row.userId,
+            bookId: row.bookId,
+            currentPage: row.currentPage,
+            status: row.status,
+            addedAt: row.addedAt ?? new Date(),
+          },
+          // Progress can refresh; addedAt is kept unless a later backfill
+          // finds an earlier Mihon dateAdded.
           update: {
             currentPage: row.currentPage,
             status: row.status,
@@ -536,6 +570,30 @@ async function main() {
     );
     upserted += batch.length;
     console.log(`Imported library rows ${upserted}/${libraryRows.length}`);
+  }
+
+  const datedRows = libraryRows.filter((row) => row.addedAt);
+  if (datedRows.length) {
+    let restored = 0;
+    for (let i = 0; i < datedRows.length; i += batchSize) {
+      const batch = datedRows.slice(i, i + batchSize);
+      const results = await Promise.all(
+        batch.map((row) =>
+          prisma.userBook.updateMany({
+            where: {
+              userId: row.userId,
+              bookId: row.bookId,
+              addedAt: { gt: row.addedAt },
+            },
+            data: { addedAt: row.addedAt },
+          }),
+        ),
+      );
+      restored += results.reduce((sum, result) => sum + result.count, 0);
+    }
+    console.log(
+      `Restored earlier Mihon date-added on ${restored} existing library rows`,
+    );
   }
 
   const finalCount = await prisma.userBook.count({ where: { userId: user.id } });

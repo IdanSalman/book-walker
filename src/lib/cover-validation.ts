@@ -1,6 +1,25 @@
+import { coverDisplayUrl, coverRefererForHost } from "@/lib/cover-url";
+import { fetchKeepingReferer } from "@/lib/reader/source-fetch";
+
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-const FETCH_TIMEOUT_MS = 10_000;
 const MAX_BYTES = 512 * 1024;
+
+function coverFetchHeaders(
+  url: string,
+  accept: string,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: accept,
+    "User-Agent": "BookWalker/1.0 (cover-validator)",
+  };
+  try {
+    const referer = coverRefererForHost(new URL(url).hostname);
+    if (referer) headers.Referer = referer;
+  } catch {
+    /* keep going without a Referer */
+  }
+  return headers;
+}
 
 /** URLs we treat as PNG covers (only these get scanned and can be flagged). */
 export function isPngCoverUrl(url: string): boolean {
@@ -41,17 +60,9 @@ export async function isPngCoverBroken(coverUrl: string): Promise<boolean> {
 
   let response: Response;
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    response = await fetch(coverUrl, {
-      signal: controller.signal,
-      headers: {
-        Accept: "image/png,image/*",
-        "User-Agent": "BookWalker/1.0 (cover-validator)",
-      },
-      redirect: "follow",
+    response = await fetchKeepingReferer(coverUrl, {
+      headers: coverFetchHeaders(coverUrl, "image/png,image/*"),
     });
-    clearTimeout(timeout);
   } catch {
     return true;
   }
@@ -76,6 +87,42 @@ export async function isPngCoverBroken(coverUrl: string): Promise<boolean> {
 /** @deprecated Use isPngCoverBroken */
 export async function isCoverCorrupted(coverUrl: string): Promise<boolean> {
   return isPngCoverBroken(coverUrl);
+}
+
+/** True when the cover URL returns image bytes that can be displayed. */
+export async function coverImageLoads(coverUrl: string): Promise<boolean> {
+  if (!coverUrl?.trim()) return false;
+  const url = coverDisplayUrl(coverUrl.trim(), 256);
+
+  if (isPngCoverUrl(url)) {
+    return !(await isPngCoverBroken(url));
+  }
+
+  let response: Response;
+  try {
+    response = await fetchKeepingReferer(url, {
+      headers: coverFetchHeaders(
+        url,
+        "image/avif,image/webp,image/jpeg,image/png,image/*",
+      ),
+    });
+  } catch {
+    return false;
+  }
+
+  if (!response.ok) return false;
+
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (
+    contentType &&
+    !contentType.startsWith("image/") &&
+    !contentType.includes("octet-stream")
+  ) {
+    return false;
+  }
+
+  const buffer = new Uint8Array(await response.arrayBuffer());
+  return buffer.byteLength > 32;
 }
 
 export type CoverScanResult = {

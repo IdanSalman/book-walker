@@ -8,16 +8,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { ReaderChapter } from "@/lib/reader/types";
 import { continueChapterIndex } from "@/lib/reader/types";
+import { readerChapterHref } from "@/lib/reader/source-id";
 import { cn } from "@/lib/utils";
 
 export function ChapterList({
   bookId,
   chapters,
   currentPage,
+  sourceName,
 }: {
   bookId: string;
   chapters: ReaderChapter[];
   currentPage: number;
+  sourceName?: string | null;
 }) {
   const [newestFirst, setNewestFirst] = useState(true);
 
@@ -32,7 +35,7 @@ export function ChapterList({
   if (chapters.length === 0) {
     return (
       <p className="text-sm text-zinc-400">
-        No readable chapters were found on MangaDex for this title.
+        No readable chapters were found on the enabled sources for this title.
       </p>
     );
   }
@@ -46,13 +49,14 @@ export function ChapterList({
           </h2>
           <p className="mt-1 text-sm text-zinc-400">
             {chapters.length.toLocaleString()} chapter
-            {chapters.length === 1 ? "" : "s"} · MangaDex
+            {chapters.length === 1 ? "" : "s"}
+            {sourceName ? ` · ${sourceName}` : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {continueChapter && (
             <Link
-              href={`/read/${bookId}/${continueChapter.id}`}
+              href={readerChapterHref(bookId, continueChapter.id)}
               className={buttonVariants({ size: "sm" })}
             >
               <BookOpen className="h-4 w-4" />
@@ -87,7 +91,7 @@ export function ChapterList({
           return (
             <li key={chapter.id}>
               <Link
-                href={`/read/${bookId}/${chapter.id}`}
+                href={readerChapterHref(bookId, chapter.id)}
                 className={cn(
                   "flex items-start justify-between gap-3 px-4 py-3 transition hover:bg-zinc-800/70",
                   current && "bg-violet-950/30",
