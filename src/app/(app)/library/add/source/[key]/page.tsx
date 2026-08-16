@@ -53,6 +53,7 @@ export default async function SourceBrowsePage({
   if (!engine?.browse) notFound();
 
   const hideAdult = session.user.hideAdultContent ?? true;
+  const hideRead = session.user.hideReadTitles ?? false;
   const isAdmin = session.user.role === "ADMIN";
   const view = parseSourceBrowseSort(viewParam);
   const query = qParam?.trim() ?? "";
@@ -94,6 +95,9 @@ export default async function SourceBrowsePage({
         : result.items,
       session.user.id,
     );
+    if (hideRead) {
+      items = items.filter((item) => !item.completed);
+    }
     hasMore = result.hasMore;
     total = result.total;
   } catch (err) {

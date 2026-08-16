@@ -5,6 +5,7 @@ import {
   UNCATEGORIZED_SLUG,
 } from "@/lib/library-categories";
 import { hideAdultBookFilter } from "@/lib/adult-content";
+import { hideReadUserBookFilter } from "@/lib/hide-read-titles";
 import { parsePublicationFilter } from "@/lib/publication";
 
 export type LibrarySort =
@@ -47,7 +48,9 @@ export function buildLibraryWhere(
     category?: string;
     status?: string;
     publication?: string;
+    q?: string;
     hideAdult?: boolean;
+    hideRead?: boolean;
   },
 ): Prisma.UserBookWhereInput {
   const selected = params.category
@@ -58,6 +61,7 @@ export function buildLibraryWhere(
     ?.value;
   const publicationStatus = parsePublicationFilter(params.publication);
   const collection = params.collection?.trim() || undefined;
+  const query = params.q?.trim();
 
   const collectionFilter: Prisma.UserBookWhereInput =
     collection === UNCATEGORIZED_SLUG
@@ -74,12 +78,23 @@ export function buildLibraryWhere(
     ...hideAdultBookFilter(Boolean(params.hideAdult)),
     ...(categoryFilter ? { category: categoryFilter } : {}),
     ...(publicationStatus ? { publicationStatus } : {}),
+    ...(query
+      ? {
+          OR: [
+            { title: { contains: query, mode: "insensitive" as const } },
+            { artist: { contains: query, mode: "insensitive" as const } },
+            { author: { contains: query, mode: "insensitive" as const } },
+            { sourceName: { contains: query, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
   };
 
   return {
     userId,
     ...collectionFilter,
     ...(status ? { status } : {}),
+    ...hideReadUserBookFilter(Boolean(params.hideRead), status),
     ...(Object.keys(bookFilter).length ? { book: bookFilter } : {}),
   };
 }
@@ -110,6 +125,7 @@ export type LibraryHrefParams = {
   category?: string;
   status?: string;
   publication?: string;
+  q?: string;
   sort?: string;
   page?: number;
 };
@@ -146,6 +162,7 @@ export function libraryPageHref(params: LibraryHrefParams): string {
   if (params.category) search.set("category", params.category);
   if (params.status) search.set("status", params.status);
   if (params.publication) search.set("publication", params.publication);
+  if (params.q) search.set("q", params.q);
   if (params.sort && params.sort !== "updated-desc") search.set("sort", params.sort);
   if (params.page && params.page > 1) search.set("page", String(params.page));
   const query = search.toString();

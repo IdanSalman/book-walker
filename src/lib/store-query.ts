@@ -7,6 +7,7 @@ import {
 } from "@/lib/adult-content";
 import { categoryFromSlug } from "@/lib/categories";
 import { parsePublicationFilter } from "@/lib/publication";
+import { hideReadStoreBookFilter } from "@/lib/hide-read-titles";
 import { prisma } from "@/lib/prisma";
 /** Hide books with broken PNG covers from the public store. */
 export function hideCorruptedCoverFilter(): Prisma.BookWhereInput {
@@ -52,6 +53,8 @@ export function buildStoreWhere(
     category?: string;
     genre?: string;
     hideAdult: boolean;
+    hideRead?: boolean;
+    userId?: string;
     content?: string;
     publication?: string;
     q?: string;
@@ -82,6 +85,9 @@ export function buildStoreWhere(
       : {}),
     ...storeContentFilter(contentFilter),
     ...hideCorruptedCoverFilter(),
+    ...(params.userId
+      ? hideReadStoreBookFilter(params.userId, Boolean(params.hideRead))
+      : {}),
   };
 }
 
@@ -215,9 +221,14 @@ export async function fetchStoreBooks(
 
 export async function getStoreGenres(
   contentFilter: StoreContentFilter = "all",
-  options: { category?: BookCategory; limit?: number } = {},
+  options: {
+    category?: BookCategory;
+    limit?: number;
+    userId?: string;
+    hideRead?: boolean;
+  } = {},
 ) {
-  const { category, limit = 80 } = options;
+  const { category, limit = 80, userId, hideRead } = options;
 
   const conditions = [
     `array_length(genres, 1) > 0`,
@@ -235,6 +246,17 @@ export async function getStoreGenres(
   if (category) {
     conditions.push(`category = $${paramIndex}::"BookCategory"`);
     params.push(category);
+    paramIndex++;
+  }
+
+  if (hideRead && userId) {
+    conditions.push(`NOT EXISTS (
+      SELECT 1 FROM "UserBook" ub
+      WHERE ub."bookId" = "Book".id
+        AND ub."userId" = $${paramIndex}
+        AND ub.status = 'COMPLETED'
+    )`);
+    params.push(userId);
     paramIndex++;
   }
 

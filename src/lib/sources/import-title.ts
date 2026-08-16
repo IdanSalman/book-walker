@@ -151,20 +151,26 @@ export async function importCatalogCandidate(
   };
 
   if (sameListing) {
+    if (
+      extras?.mode === "migrate" &&
+      extras.migrateBookId &&
+      extras.migrateBookId !== sameListing.id
+    ) {
+      throw new Error(
+        `${candidate.title} is already in the store as a separate listing.`,
+      );
+    }
     await prisma.book.update({ where: { id: sameListing.id }, data });
-    return { id: sameListing.id, title: candidate.title, status: "updated" };
+    return {
+      id: sameListing.id,
+      title: candidate.title,
+      status: extras?.mode === "migrate" ? "migrated" : "updated",
+    };
   }
 
-  if (sameTitle.length > 0 && extras?.mode !== "duplicate") {
-    const requestedId = extras?.migrateBookId;
-    const target =
-      extras?.mode === "migrate"
-        ? (requestedId
-            ? sameTitle.find((book) => book.id === requestedId)
-            : sameTitle[0])
-        : null;
-
-    if (!target) {
+  if (extras?.mode === "migrate") {
+    const requestedId = extras.migrateBookId;
+    if (!requestedId) {
       throw new CatalogConflictError({
         candidateTitle: candidate.title,
         incomingSourceName: sourceName,
@@ -172,9 +178,27 @@ export async function importCatalogCandidate(
       });
     }
 
+    const target =
+      sameTitle.find((book) => book.id === requestedId) ??
+      (await prisma.book.findUnique({
+        where: { id: requestedId },
+        select: conflictSelect,
+      }));
+    if (!target) {
+      throw new Error("Catalog listing to migrate was not found");
+    }
+
     await prisma.book.update({ where: { id: target.id }, data });
     // UserBook rows keep the same bookId, so addedAt / progress stay put.
     return { id: target.id, title: candidate.title, status: "migrated" };
+  }
+
+  if (sameTitle.length > 0 && extras?.mode !== "duplicate") {
+    throw new CatalogConflictError({
+      candidateTitle: candidate.title,
+      incomingSourceName: sourceName,
+      existing: sameTitle,
+    });
   }
 
   const created = await prisma.book.create({

@@ -61,7 +61,9 @@ export function UserBookForm({
         <input type="hidden" name="rating" value={rating ?? ""} />
 
         <div className="space-y-2">
-          <Label htmlFor="currentPage">Current page</Label>
+          <Label htmlFor="currentPage">
+            {book.category === "MANGA" ? "Chapters read" : "Current page"}
+          </Label>
           <Input
             id="currentPage"
             name="currentPage"

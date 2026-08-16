@@ -22,7 +22,10 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { updateReaderProgress } from "@/lib/actions/reader";
+import {
+  isChapterRead,
+  readerProgressValue,
+} from "@/lib/reader/chapter-progress";
 import type { ReaderChapter, ReadingMode } from "@/lib/reader/types";
 import { readingModeLabel } from "@/lib/reader/types";
 import { cn } from "@/lib/utils";
@@ -111,6 +114,7 @@ export function MangaReader({
     () => false,
   );
 
+  const [chaptersRead, setChaptersRead] = useState(currentPage);
   const [menuOpen, setMenuOpen] = useState(true);
   const [chapterListOpen, setChapterListOpen] = useState(false);
   const loadKey = `${chapterId}:${dataSaver ? "1" : "0"}`;
@@ -211,21 +215,35 @@ export function MangaReader({
   const reportProgress = useCallback(
     (completedChapter: boolean) => {
       if (chapterIndex < 0) return;
-      void updateReaderProgress({
-        bookId,
-        chapterIndex: chapterIndex + 1,
-        chapterCount: chapters.length,
-        completedChapter,
+      const chapter = chapters[chapterIndex];
+      if (!chapter) return;
+      const progressPage = readerProgressValue(chapter, chapterIndex);
+      if (completedChapter) {
+        setChaptersRead((read) => Math.max(read, progressPage));
+      }
+      // Route handler, not a Server Action: progress must not re-render the
+      // reader page (that shows Next.js “Rendering” and re-fetches chapters).
+      void fetch("/api/reader/progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookId,
+          chapterIndex: chapterIndex + 1,
+          chapterCount: chapters.length,
+          completedChapter,
+          progressPage,
+        }),
       });
     },
-    [bookId, chapterIndex, chapters.length],
+    [bookId, chapterIndex, chapters],
   );
 
   useEffect(() => {
-    if (!loading && !error && pages.length > 0) {
-      reportProgress(false);
-    }
-  }, [loading, error, pages.length, reportProgress]);
+    if (loading || error || pages.length === 0) return;
+    reportProgress(false);
+    // Once per chapter load; reportProgress identity must not retrigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chapterId is the load key
+  }, [loading, error, pages.length, chapterId]);
 
   const goToChapter = useCallback(
     (id: string | null | undefined) => {
@@ -541,7 +559,7 @@ export function MangaReader({
             <ol className="flex-1 overflow-y-auto">
               {chapterOptions.map((item) => {
                 const sourceIndex = chapters.findIndex((c) => c.id === item.id);
-                const read = currentPage > 0 && sourceIndex < currentPage;
+                const read = isChapterRead(item, chaptersRead, sourceIndex);
                 return (
                   <li key={item.id}>
                     <button

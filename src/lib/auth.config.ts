@@ -75,6 +75,7 @@ export const authConfig = {
         session.user.name = (token.name as string | null) ?? null;
         session.user.onboardingComplete = Boolean(token.onboardingComplete);
         session.user.hideAdultContent = Boolean(token.hideAdultContent ?? true);
+        session.user.hideReadTitles = Boolean(token.hideReadTitles);
       }
       return session;
     },

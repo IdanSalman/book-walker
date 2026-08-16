@@ -2,7 +2,6 @@ import { coverDisplayUrl, coverRefererForHost } from "@/lib/cover-url";
 import { fetchKeepingReferer } from "@/lib/reader/source-fetch";
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-const MAX_BYTES = 512 * 1024;
 
 function coverFetchHeaders(
   url: string,
@@ -36,6 +35,31 @@ export function isPngCoverUrl(url: string): boolean {
 function isPngSignature(bytes: Uint8Array): boolean {
   if (bytes.length < 8) return false;
   return PNG_SIGNATURE.every((byte, index) => bytes[index] === byte);
+}
+
+function isLikelyImageBytes(bytes: Uint8Array): boolean {
+  if (bytes.length < 12) return false;
+  if (isPngSignature(bytes)) return true;
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) return true;
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return true;
+  if (
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return true;
+  }
+  return (
+    bytes[4] === 0x66 &&
+    bytes[5] === 0x74 &&
+    bytes[6] === 0x79 &&
+    bytes[7] === 0x70
+  );
 }
 
 function hasValidPngImageData(bytes: Uint8Array): boolean {
@@ -72,7 +96,7 @@ export async function isPngCoverBroken(coverUrl: string): Promise<boolean> {
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
   const buffer = new Uint8Array(await response.arrayBuffer());
 
-  if (buffer.byteLength === 0 || buffer.byteLength > MAX_BYTES) {
+  if (buffer.byteLength === 0) {
     return true;
   }
 
@@ -113,6 +137,8 @@ export async function coverImageLoads(coverUrl: string): Promise<boolean> {
   if (!response.ok) return false;
 
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  const buffer = new Uint8Array(await response.arrayBuffer());
+  if (!isLikelyImageBytes(buffer)) return false;
   if (
     contentType &&
     !contentType.startsWith("image/") &&
@@ -121,8 +147,7 @@ export async function coverImageLoads(coverUrl: string): Promise<boolean> {
     return false;
   }
 
-  const buffer = new Uint8Array(await response.arrayBuffer());
-  return buffer.byteLength > 32;
+  return true;
 }
 
 export type CoverScanResult = {

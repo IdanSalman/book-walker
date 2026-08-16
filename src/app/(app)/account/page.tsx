@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { AdultContentSetting } from "@/components/adult-content-setting";
+import { HideReadTitlesSetting } from "@/components/hide-read-titles-setting";
 import { Badge } from "@/components/ui/badge";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
@@ -32,6 +33,7 @@ export default async function AccountPage() {
   }
 
   const hideAdultContent = session.user.hideAdultContent ?? true;
+  const hideReadTitles = session.user.hideReadTitles ?? false;
   const librarySize = hideAdultContent
     ? await prisma.userBook.count({
         where: { userId: user.id, book: { isAdult: false } },
@@ -78,6 +80,7 @@ export default async function AccountPage() {
           Preferences
         </h2>
         <AdultContentSetting hideAdultContent={hideAdultContent} />
+        <HideReadTitlesSetting hideReadTitles={hideReadTitles} />
       </section>
 
       <section className="space-y-3">

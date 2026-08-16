@@ -7,6 +7,7 @@ import {
   LibraryGridSkeleton,
   LibraryResults,
 } from "@/components/library-results";
+import { StoreBookSearch } from "@/components/store-book-search";
 import { CATEGORIES } from "@/lib/categories";
 import {
   UNCATEGORIZED_NAME,
@@ -33,21 +34,25 @@ export default async function LibraryPage({
     status?: string;
     publication?: string;
     sort?: string;
+    q?: string;
     page?: string;
   }>;
 }) {
   const session = await requireUser();
   const isAdmin = session.user.role === "ADMIN";
   const hideAdult = session.user.hideAdultContent ?? true;
+  const hideRead = session.user.hideReadTitles ?? false;
   const {
     collection: collectionParam,
     category: categoryParam,
     status,
     publication: publicationParam,
     sort: sortParam,
+    q: qParam,
     page: pageParam,
   } = await searchParams;
 
+  const query = qParam?.trim() ?? "";
   const selectedType = CATEGORIES.find((c) => c.slug === categoryParam);
   const sort = parseLibrarySort(sortParam);
   const publication = parsePublicationFilter(publicationParam);
@@ -56,7 +61,7 @@ export default async function LibraryPage({
     selectedType.value === "MANGA" ||
     selectedType.value === "LIGHT_NOVEL";
 
-  const nav = await getLibraryNav(session.user.id, hideAdult);
+  const nav = await getLibraryNav(session.user.id, hideAdult, hideRead);
 
   const selectedCollection =
     collectionParam === UNCATEGORIZED_SLUG
@@ -68,6 +73,7 @@ export default async function LibraryPage({
     category: categoryParam,
     status,
     publication: showPublicationFilter ? publicationParam : undefined,
+    q: query || undefined,
     sort: sortParam,
   };
 
@@ -140,6 +146,14 @@ export default async function LibraryPage({
       />
 
       <Suspense>
+        <StoreBookSearch
+          defaultValue={query}
+          actionPath="/library"
+          placeholder="Search your library…"
+        />
+      </Suspense>
+
+      <Suspense>
         <LibraryFilters
           category={categoryParam}
           status={status}
@@ -154,6 +168,7 @@ export default async function LibraryPage({
           userId={session.user.id}
           isAdmin={isAdmin}
           hideAdult={hideAdult}
+          hideRead={hideRead}
           librarySize={nav.librarySize}
           totalCount={nav.totalCount}
           filterParams={filterParams}
@@ -163,6 +178,7 @@ export default async function LibraryPage({
           typeLabel={selectedType?.label}
           statusLabel={statusLabel}
           publicationLabel={publicationLabel}
+          queryLabel={query || undefined}
         />
       </Suspense>
     </div>

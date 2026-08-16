@@ -20,3 +20,16 @@ export async function updateHideAdultContent(hide: boolean): Promise<void> {
   revalidatePath("/read", "layout");
   revalidatePath("/category", "layout");
 }
+
+export async function updateHideReadTitles(hide: boolean): Promise<void> {
+  const session = await requireUser();
+
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { hideReadTitles: hide },
+  });
+
+  revalidateUserLibrary(session.user.id);
+  revalidatePath("/account");
+  revalidatePath("/library/add", "layout");
+}

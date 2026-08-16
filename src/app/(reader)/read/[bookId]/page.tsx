@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { shouldHideAdultBook } from "@/lib/adult-content";
 import { prisma } from "@/lib/prisma";
-import { continueChapterIndex } from "@/lib/reader/types";
+import { continueChapterIndex } from "@/lib/reader/chapter-progress";
 import { canReadBook } from "@/lib/reader/access";
 import { getMangaWithChapters } from "@/lib/reader/resolve";
 import { readerChapterHref } from "@/lib/reader/source-id";
@@ -38,7 +38,7 @@ export default async function ReadIndexPage({
   let errorMessage: string | null = null;
   try {
     const { chapters } = await getMangaWithChapters(book);
-    const index = continueChapterIndex(userBook.currentPage, chapters.length);
+    const index = continueChapterIndex(userBook.currentPage, chapters);
     chapterId = chapters[index]?.id ?? null;
   } catch (error) {
     errorMessage =

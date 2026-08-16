@@ -23,6 +23,15 @@ import {
 import { importMangaDexTitle } from "@/lib/sources/mangadex-catalog";
 import { withCoverFromSources } from "@/lib/sources/repair-cover";
 import {
+  listMigrationSources,
+  loadBookForMigration,
+  previewMigrationTarget,
+  searchMigrationCandidates,
+  type MigrationCandidate,
+  type MigrationPreview,
+  type MigrationSource,
+} from "@/lib/sources/migrate";
+import {
   fetchMihonCatalog,
   findMihonSourcesById,
   isMihonSourceConfigured,
@@ -104,6 +113,15 @@ function revalidateSources(sourceId?: string) {
   revalidatePath("/admin/sources");
   revalidatePath("/admin/sources/browse");
   if (sourceId) revalidatePath(`/admin/sources/${sourceId}`);
+}
+
+function revalidateImportedBook(bookId: string, sourceKey: string) {
+  revalidatePath("/admin/books");
+  revalidatePath("/library");
+  revalidatePath("/dashboard");
+  revalidatePath("/library/add");
+  revalidatePath(`/library/add/source/${sourceKey}`);
+  revalidatePath(`/books/${bookId}`);
 }
 
 function duplicateKey(err: unknown): boolean {
@@ -522,7 +540,7 @@ export async function resyncSourceBooks(
     },
     orderBy: { lastSyncedAt: { sort: "asc", nulls: "first" } },
     take: RESYNC_LIMIT,
-    select: { id: true, title: true, externalId: true, sourceUrl: true },
+    select: { id: true, title: true, externalId: true, sourceUrl: true, sourceName: true, publicationStatus: true },
   });
 
   if (books.length === 0) {
@@ -541,6 +559,7 @@ export async function resyncSourceBooks(
           totalPages: result.totalPages,
           publicationStatus: result.publicationStatus,
           sourceUrl: result.sourceUrl ?? book.sourceUrl,
+          sourceName: result.sourceName ?? book.sourceName,
           externalId: result.externalId ?? book.externalId,
           lastSyncedAt: result.lastSyncedAt,
         },
@@ -649,9 +668,7 @@ export async function addTitleToStore(
       },
     });
     revalidateSources(source.id);
-    revalidatePath("/admin/books");
-    revalidatePath("/library/add");
-    revalidatePath(`/library/add/source/${source.key}`);
+    revalidateImportedBook(outcome.id, source.key);
     return {
       success: true,
       bookId: outcome.id,
@@ -681,9 +698,7 @@ async function addTitleToStoreFromEngine(
   if (!engine) return { error: "Unknown source" };
   try {
     const outcome = await importOneTitle({ key, name }, titleId, engine, options);
-    revalidatePath("/admin/books");
-    revalidatePath("/library/add");
-    revalidatePath(`/library/add/source/${key}`);
+    revalidateImportedBook(outcome.id, key);
     return {
       success: true,
       bookId: outcome.id,
@@ -701,6 +716,69 @@ async function addTitleToStoreFromEngine(
     }
     return { error: err instanceof Error ? err.message : "Import failed" };
   }
+}
+
+export async function getMigrationSources(
+  bookId: string,
+): Promise<{ sources: MigrationSource[]; error?: string }> {
+  await requireAdmin();
+  const book = await loadBookForMigration(bookId);
+  if (!book) return { sources: [], error: "Book not found" };
+  return { sources: await listMigrationSources(book) };
+}
+
+export async function searchBookMigration(
+  bookId: string,
+  query: string,
+  sourceKey?: string,
+): Promise<{ candidates: MigrationCandidate[]; error?: string }> {
+  await requireAdmin();
+  const book = await loadBookForMigration(bookId);
+  if (!book) return { candidates: [], error: "Book not found" };
+
+  try {
+    const candidates = await searchMigrationCandidates({
+      book,
+      query: query.trim() || book.title,
+      sourceKey: sourceKey || undefined,
+    });
+    return { candidates };
+  } catch (err) {
+    return {
+      candidates: [],
+      error: err instanceof Error ? err.message : "Search failed",
+    };
+  }
+}
+
+export async function previewBookMigration(
+  sourceKey: string,
+  titleId: string,
+  hint?: { title: string; url: string },
+): Promise<{ preview?: MigrationPreview; error?: string }> {
+  await requireAdmin();
+  try {
+    return { preview: await previewMigrationTarget(sourceKey, titleId, hint) };
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Could not load listing",
+    };
+  }
+}
+
+export async function migrateBookToSource(
+  bookId: string,
+  sourceKey: string,
+  titleId: string,
+): Promise<AddToStoreState> {
+  await requireAdmin();
+  const book = await loadBookForMigration(bookId);
+  if (!book) return { error: "Book not found" };
+
+  return addTitleToStore(sourceKey, titleId, {
+    mode: "migrate",
+    migrateBookId: book.id,
+  });
 }
 
 async function importOneTitle(
@@ -734,7 +812,7 @@ async function importOneTitle(
     source.name,
     {
       ...options,
-      externalId: options?.externalId ?? (engine.key === "comick" ? mangaId : null),
+      externalId: engine.key === "comick" ? mangaId : null,
     },
   );
 }

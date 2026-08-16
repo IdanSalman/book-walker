@@ -278,6 +278,7 @@ export async function getMangaWithChapters(book: {
     chapters,
     sourceKey: "mangadex",
     sourceName: "MangaDex",
+    sourceUrl: `https://mangadex.org/title/${manga.id}`,
   };
 }
 

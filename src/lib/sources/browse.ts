@@ -39,6 +39,7 @@ export type SourceBrowseItem = CatalogCandidate & {
   inCatalog: boolean;
   bookId: string | null;
   inLibrary: boolean;
+  completed: boolean;
   existingTitle?: {
     id: string;
     title: string;

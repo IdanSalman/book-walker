@@ -310,6 +310,8 @@ export async function syncBookMetadataAction(
       title: book.title,
       externalId: book.externalId,
       sourceUrl: book.sourceUrl,
+      sourceName: book.sourceName,
+      publicationStatus: book.publicationStatus,
     });
 
     await prisma.book.update({
@@ -318,6 +320,7 @@ export async function syncBookMetadataAction(
         totalPages: result.totalPages,
         publicationStatus: result.publicationStatus,
         sourceUrl: result.sourceUrl ?? book.sourceUrl,
+        sourceName: result.sourceName ?? book.sourceName,
         externalId: result.externalId ?? book.externalId,
         lastSyncedAt: result.lastSyncedAt,
       },
@@ -325,9 +328,10 @@ export async function syncBookMetadataAction(
 
     revalidateCatalog(bookId);
 
+    const from = result.syncedFrom ? ` from ${result.syncedFrom}` : "";
     return {
       success: true,
-      message: `Synced: ${result.totalPages} chapters, status ${result.publicationStatus}`,
+      message: `Synced${from}: ${result.totalPages} chapters, status ${result.publicationStatus}`,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
@@ -355,6 +359,8 @@ export async function syncOngoingManga(
       title: true,
       externalId: true,
       sourceUrl: true,
+      sourceName: true,
+      publicationStatus: true,
     },
   });
 
@@ -374,6 +380,7 @@ export async function syncOngoingManga(
           totalPages: result.totalPages,
           publicationStatus: result.publicationStatus,
           sourceUrl: result.sourceUrl ?? book.sourceUrl,
+          sourceName: result.sourceName ?? book.sourceName,
           externalId: result.externalId ?? book.externalId,
           lastSyncedAt: result.lastSyncedAt,
         },

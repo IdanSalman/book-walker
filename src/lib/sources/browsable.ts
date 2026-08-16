@@ -29,11 +29,18 @@ export async function getBrowsableSources(): Promise<BrowsableSource[]> {
   }
 
   const sources: BrowsableSource[] = [];
+  const seen = new Set<string>();
   for (const row of rows) {
     if (row.kind === "METADATA") continue;
     const engine = await sourceEngine(row.key);
     if (!engine?.browse) continue;
-    sources.push({ key: engine.key, name: row.name });
+    // Extra Comick (or other alias) rows still resolve to one engine.
+    if (seen.has(engine.key)) continue;
+    seen.add(engine.key);
+    sources.push({
+      key: engine.key,
+      name: row.key === engine.key ? row.name : engine.name,
+    });
   }
   return sources;
 }
@@ -75,9 +82,14 @@ export async function annotateBrowseItems(
       ? []
       : await prisma.userBook.findMany({
           where: { userId, bookId: { in: bookIds } },
-          select: { bookId: true },
+          select: { bookId: true, status: true },
         });
   const inLibrary = new Set(library.map((entry) => entry.bookId));
+  const completed = new Set(
+    library
+      .filter((entry) => entry.status === "COMPLETED")
+      .map((entry) => entry.bookId),
+  );
 
   return items.map((item) => {
     const book = catalog.get(item.url);
@@ -90,6 +102,7 @@ export async function annotateBrowseItems(
       inCatalog: Boolean(book),
       bookId: book?.id ?? null,
       inLibrary: bookId ? inLibrary.has(bookId) : false,
+      completed: bookId ? completed.has(bookId) : false,
       existingTitle,
     };
   });

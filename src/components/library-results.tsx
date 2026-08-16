@@ -25,6 +25,7 @@ type LibraryResultsProps = {
   userId: string;
   isAdmin: boolean;
   hideAdult: boolean;
+  hideRead: boolean;
   librarySize: number;
   totalCount: number;
   filterParams: LibraryHrefParams;
@@ -34,12 +35,14 @@ type LibraryResultsProps = {
   typeLabel?: string;
   statusLabel?: string | null;
   publicationLabel?: string | null;
+  queryLabel?: string;
 };
 
 export async function LibraryResults({
   userId,
   isAdmin,
   hideAdult,
+  hideRead,
   librarySize,
   totalCount,
   filterParams,
@@ -49,13 +52,16 @@ export async function LibraryResults({
   typeLabel,
   statusLabel,
   publicationLabel,
+  queryLabel,
 }: LibraryResultsProps) {
   const where = buildLibraryWhere(userId, {
     collection: filterParams.collection,
     category: filterParams.category,
     status: filterParams.status,
     publication: filterParams.publication,
+    q: filterParams.q,
     hideAdult,
+    hideRead,
   });
 
   const requestedPage = parseLibraryPage(pageParam);
@@ -83,11 +89,17 @@ export async function LibraryResults({
         <p className="text-zinc-400">
           {librarySize === 0
             ? "Your library is empty."
-            : hideAdult && totalCount === 0
-              ? "Adult titles are hidden."
-              : "No titles match these filters."}
+            : hideAdult && hideRead && totalCount === 0
+              ? "Adult and completed titles are hidden."
+              : hideAdult && totalCount === 0
+                ? "Adult titles are hidden."
+                : hideRead && totalCount === 0
+                  ? "Completed titles are hidden."
+                  : queryLabel
+                    ? `No titles match “${queryLabel}”.`
+                    : "No titles match these filters."}
         </p>
-        {hideAdult && librarySize > 0 && totalCount === 0 ? (
+        {(hideAdult || hideRead) && librarySize > 0 && totalCount === 0 ? (
           <Link
             href="/account"
             className="mt-2 inline-block text-sm text-violet-400 hover:text-violet-300"
@@ -96,10 +108,18 @@ export async function LibraryResults({
           </Link>
         ) : (
           <Link
-            href={librarySize === 0 ? "/library/add" : "/library"}
+            href={
+              librarySize === 0
+                ? "/library/add"
+                : libraryPageHref({ ...filterParams, q: undefined })
+            }
             className="mt-2 inline-block text-sm text-violet-400 hover:text-violet-300"
           >
-            {librarySize === 0 ? "Browse the store" : "Clear filters"}
+            {librarySize === 0
+              ? "Browse the store"
+              : queryLabel
+                ? "Clear search"
+                : "Clear filters"}
           </Link>
         )}
       </div>
@@ -115,6 +135,7 @@ export async function LibraryResults({
         {typeLabel ? ` · ${typeLabel}` : ""}
         {statusLabel ? ` · ${statusLabel}` : ""}
         {publicationLabel ? ` · ${publicationLabel}` : ""}
+        {queryLabel ? ` matching “${queryLabel}”` : ""}
         {totalCount > 0 && filteredCount !== totalCount && (
           <span className="text-zinc-500">
             {" "}

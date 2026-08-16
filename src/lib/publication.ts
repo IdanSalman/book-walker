@@ -1,5 +1,7 @@
 import type { Book, PublicationStatus } from "@prisma/client";
 
+import { isReadingSourceUrl } from "@/lib/reader/source-link";
+
 export const PUBLICATION_STATUS_LABELS: Record<PublicationStatus, string> = {
   ONGOING: "Ongoing",
   COMPLETED: "Completed",
@@ -70,8 +72,15 @@ export function pagesFieldLabel(
   return "Pages";
 }
 
-export function canSyncMetadata(book: Pick<Book, "externalId" | "sourceUrl">): boolean {
-  return Boolean(book.externalId?.startsWith("anilist:") || isMangaDexUrl(book.sourceUrl));
+export function canSyncMetadata(
+  book: Pick<Book, "externalId" | "sourceUrl" | "sourceName" | "category">,
+): boolean {
+  if (book.category === "MANGA" && (book.sourceName || isReadingSourceUrl(book.sourceUrl))) {
+    return true;
+  }
+  return Boolean(
+    book.externalId?.startsWith("anilist:") || isMangaDexUrl(book.sourceUrl),
+  );
 }
 
 export function isMangaDexUrl(url: string | null | undefined): boolean {

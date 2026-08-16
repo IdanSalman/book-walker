@@ -33,6 +33,8 @@ export type ResolvedManga = {
   chapters: ReaderChapter[];
   sourceKey: string;
   sourceName: string;
+  sourceUrl: string | null;
+  coverUrl?: string | null;
 };
 
 export type CatalogCandidate = {
@@ -49,15 +51,6 @@ export type CatalogCandidate = {
   lastChapter: string | null;
   url: string;
 };
-
-export function continueChapterIndex(
-  currentPage: number,
-  chapterCount: number,
-): number {
-  if (chapterCount <= 0) return 0;
-  if (currentPage <= 0) return 0;
-  return Math.min(currentPage - 1, chapterCount - 1);
-}
 
 export function defaultReadingMode(
   originalLanguage: string | null,

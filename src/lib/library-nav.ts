@@ -2,6 +2,7 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 
 import { hideAdultUserBookFilter } from "@/lib/adult-content";
+import { hideReadUserBookFilter } from "@/lib/hide-read-titles";
 import { libraryNavTag } from "@/lib/cache-tags";
 import { prisma } from "@/lib/prisma";
 
@@ -22,10 +23,18 @@ export type LibraryNavData = {
 async function loadLibraryNav(
   userId: string,
   hideAdult: boolean,
+  hideRead: boolean,
 ): Promise<LibraryNavData> {
-  const adultJoinFilter = hideAdult
-    ? { userBook: { book: { isAdult: false } } }
-    : {};
+  const userBookFilter = {
+    ...hideAdultUserBookFilter(hideAdult),
+    ...hideReadUserBookFilter(hideRead),
+  };
+  const joinFilter = {
+    userBook: {
+      ...(hideAdult ? { book: { isAdult: false } } : {}),
+      ...hideReadUserBookFilter(hideRead),
+    },
+  };
 
   const [libraryCategories, uncategorizedCount, totalCount, librarySize] =
     await Promise.all([
@@ -38,7 +47,7 @@ async function loadLibraryNav(
           slug: true,
           _count: {
             select: {
-              userBooks: { where: adultJoinFilter },
+              userBooks: { where: joinFilter },
             },
           },
         },
@@ -47,13 +56,13 @@ async function loadLibraryNav(
         where: {
           userId,
           categories: { none: {} },
-          ...hideAdultUserBookFilter(hideAdult),
+          ...userBookFilter,
         },
       }),
       prisma.userBook.count({
         where: {
           userId,
-          ...hideAdultUserBookFilter(hideAdult),
+          ...userBookFilter,
         },
       }),
       prisma.userBook.count({ where: { userId } }),
@@ -73,10 +82,14 @@ async function loadLibraryNav(
 }
 
 export const getLibraryNav = cache(
-  (userId: string, hideAdult: boolean): Promise<LibraryNavData> =>
+  (
+    userId: string,
+    hideAdult: boolean,
+    hideRead: boolean,
+  ): Promise<LibraryNavData> =>
     unstable_cache(
-      () => loadLibraryNav(userId, hideAdult),
-      ["library-nav", userId, hideAdult ? "1" : "0"],
+      () => loadLibraryNav(userId, hideAdult, hideRead),
+      ["library-nav", userId, hideAdult ? "1" : "0", hideRead ? "1" : "0"],
       { tags: [libraryNavTag(userId)], revalidate: 60 },
     )(),
 );

@@ -1,13 +1,14 @@
 import { coverImageLoads } from "@/lib/cover-validation";
 import { prisma } from "@/lib/prisma";
 import { READING_ENGINES } from "@/lib/reader/resolve";
+import { isReadingSourceUrl } from "@/lib/reader/source-link";
 import {
   engineMatchesName,
   engineMatchesUrl,
   type ReaderSourceEngine,
 } from "@/lib/reader/source-engine";
 import { normalizeTitle, titlesMatch } from "@/lib/reader/source-id";
-import type { CatalogCandidate } from "@/lib/reader/types";
+import type { CatalogCandidate, ResolvedManga } from "@/lib/reader/types";
 
 export const COVER_REPAIR_LIMIT = 15;
 
@@ -89,7 +90,12 @@ async function searchEnginesForCover(
 ): Promise<CoverHit | null> {
   for (const engine of engines) {
     try {
-      const match = pickCoverHit(await engine.search(title), title);
+      const hits = await engine.search(title);
+      const match =
+        pickCoverHit(hits, title) ??
+        (engine.key === "comick"
+          ? hits.find((hit) => hit.coverUrl?.trim())
+          : undefined);
       const coverUrl = match?.coverUrl?.trim();
       if (!match || !coverUrl) continue;
       if (!(await coverImageLoads(coverUrl))) continue;
@@ -139,7 +145,8 @@ export async function repairBookCover(
     };
   }
 
-  const assignSource = !book.sourceName?.trim() || !book.sourceUrl?.trim();
+  const assignSource =
+    !book.sourceName?.trim() || !isReadingSourceUrl(book.sourceUrl);
   await prisma.book.update({
     where: { id: book.id },
     data: {
@@ -158,6 +165,46 @@ export async function repairBookCover(
     coverUrl: hit.coverUrl,
     sourceName: hit.sourceName,
   };
+}
+
+export async function applyResolvedListing(
+  book: BookCoverRef,
+  resolved: Pick<ResolvedManga, "sourceName" | "sourceUrl" | "coverUrl">,
+): Promise<boolean> {
+  const data: {
+    coverUrl?: string;
+    coverCorrupted?: boolean;
+    sourceName?: string;
+    sourceUrl?: string;
+  } = {};
+
+  const resolvedCover = resolved.coverUrl?.trim();
+  const existingCover = book.coverUrl.trim();
+  const existingWorks =
+    Boolean(existingCover) &&
+    !book.coverCorrupted &&
+    (await coverImageLoads(existingCover));
+  if (resolvedCover && !existingWorks) {
+    data.coverUrl = resolvedCover;
+    data.coverCorrupted = false;
+  }
+
+  if (
+    resolved.sourceUrl &&
+    isReadingSourceUrl(resolved.sourceUrl) &&
+    !isReadingSourceUrl(book.sourceUrl)
+  ) {
+    data.sourceUrl = resolved.sourceUrl;
+    data.sourceName = resolved.sourceName;
+  }
+
+  if (Object.keys(data).length === 0) return false;
+
+  await prisma.book.update({
+    where: { id: book.id },
+    data,
+  });
+  return true;
 }
 
 export async function repairMissingCovers(limit = COVER_REPAIR_LIMIT): Promise<{

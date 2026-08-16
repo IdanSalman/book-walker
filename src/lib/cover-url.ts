@@ -17,6 +17,7 @@ const COVER_REFERERS: { suffix: string; referer: string }[] = [
   { suffix: "nelomanga.net", referer: "https://www.nelomanga.net/" },
   { suffix: "manganato.gg", referer: "https://www.manganato.gg/" },
   { suffix: "comick.pictures", referer: "https://comick.dev/" },
+  { suffix: "comicknew.pictures", referer: "https://comick.dev/" },
   { suffix: "comick.dev", referer: "https://comick.dev/" },
   { suffix: "comick.io", referer: "https://comick.dev/" },
   { suffix: "wsrv.nl", referer: "https://mistscans.com/" },

@@ -333,6 +333,8 @@ export const asuraEngine: ReaderSourceEngine = {
       chapters,
       sourceKey: "asurascans",
       sourceName: "Asura Scans",
+      sourceUrl: `${SITE}${publicPath(series)}`,
+      coverUrl: coverUrl(series.cover),
     };
   },
 

@@ -8,12 +8,14 @@ import { CoverImage } from "@/components/cover-image";
 import { ReadableChapterSection } from "@/components/readable-chapter-section";
 import { StarsDisplay } from "@/components/stars";
 import { UserBookForm } from "@/components/user-book-form";
+import { OpenOnSourceLink } from "@/components/open-on-source-link";
 import { Badge } from "@/components/ui/badge";
 import { categoryLabel, categorySlug } from "@/lib/categories";
 import { shouldHideAdultBook } from "@/lib/adult-content";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { isReadableComic } from "@/lib/reader/access";
+import { isReadingSourceUrl } from "@/lib/reader/source-link";
 import { genreStoreHref, storePageHref } from "@/lib/store-query";
 import {
   PUBLICATION_STATUS_LABELS,
@@ -92,6 +94,12 @@ export default async function BookDetailPage({
             size={512}
           />
         </div>
+        {isReadingSourceUrl(book.sourceUrl) ? (
+          <OpenOnSourceLink
+            href={book.sourceUrl}
+            sourceName={book.sourceName}
+          />
+        ) : null}
         <Link href={categoryHref} className="inline-block">
           <Badge className="transition hover:border-violet-500 hover:bg-violet-950/50 hover:text-violet-200">
             {categoryLabel(book.category)}
@@ -161,7 +169,20 @@ export default async function BookDetailPage({
           )}
 
           {book.sourceName && (
-            <MetadataItem label="Source">{book.sourceName}</MetadataItem>
+            <MetadataItem label="Source">
+              {isReadingSourceUrl(book.sourceUrl) ? (
+                <a
+                  href={book.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-violet-300 hover:text-violet-200"
+                >
+                  {book.sourceName}
+                </a>
+              ) : (
+                book.sourceName
+              )}
+            </MetadataItem>
           )}
 
           {book.genres.length > 0 && (

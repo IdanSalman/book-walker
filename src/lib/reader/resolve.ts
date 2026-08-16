@@ -53,6 +53,7 @@ const COMMON_IMAGE_HOSTS = [
   "meowing.org",
   "meo.comick.pictures",
   "comick.pictures",
+  "comicknew.pictures",
   "2xstorage.com",
   "waitst.com",
   "mkklcdnv6temp.com",
@@ -150,6 +151,18 @@ function orderedEngines(
     else rest.push(engine);
   }
   return [...named, ...byUrl, ...rest];
+}
+
+/** The engine that matches this listing’s stored source, if any. */
+export async function currentReadingEngine(
+  book: ReaderBookRef,
+): Promise<ReaderSourceEngine | undefined> {
+  const engines = await enabledReadingEngines();
+  return engines.find(
+    (engine) =>
+      engineMatchesName(engine, book.sourceName) ||
+      engineMatchesUrl(engine, book.sourceUrl),
+  );
 }
 
 export async function getMangaWithChapters(

@@ -46,8 +46,10 @@ export function AdminSyncMetadataButton({
       </Button>
       <p className="text-xs text-zinc-500">
         {canSync
-          ? "Updates chapters and publication status from AniList or MangaDex."
-          : "Set an AniList external ID or MangaDex source URL to enable refetch."}
+          ? book.sourceName?.trim()
+            ? `Updates the chapter count from ${book.sourceName.trim()}.`
+            : "Updates chapters from the current reading source, or AniList / MangaDex."
+          : "Set a reading source, AniList external ID, or MangaDex URL to enable refetch."}
       </p>
       {book.lastSyncedAt && (
         <p className="text-xs text-zinc-600">

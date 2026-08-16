@@ -124,7 +124,7 @@ async function comickJsonOrNull<T>(
   }
 }
 
-/** Mihon parseCover + PR #6399: prefer selected lang, then original lang. */
+/** Prefer the API cover_url (usually a JPEG thumb), then full md_covers. */
 function parseCover(
   coverUrl: string | null | undefined,
   covers: MdCover[] | undefined,
@@ -148,7 +148,7 @@ function parseCover(
         )
       : undefined) ??
     list.find((cover) => cover.b2key);
-  return pick?.b2key ? `${COVER}/${pick.b2key}` : null;
+  return pick?.b2key ? `${COVER}/${pick.b2key.replace(/^\//, "")}` : null;
 }
 
 function mapStatus(status: number | null | undefined): PublicationStatus {
@@ -170,12 +170,40 @@ function isAdultRating(rating: string | null | undefined): boolean {
   return /erotica|pornographic|adult/i.test(rating ?? "");
 }
 
+function comicSiteUrl(comic: Pick<ComickSearchHit, "slug" | "hid">): string {
+  const path = comic.slug?.trim()
+    ? `/comic/${comic.slug.trim()}`
+    : `/comic/${comic.hid?.trim() ?? ""}`;
+  return `${SITE}${path}`;
+}
+
+async function candidateFromHit(
+  hit: ComickSearchHit,
+): Promise<CatalogCandidate | null> {
+  const first = toCandidate(hit);
+  if (!first) return null;
+  if (first.coverUrl) return first;
+  const details = await fetchComicDetails(hit.slug || hit.hid || "");
+  if (!details) return first;
+  return toCandidate(details) ?? first;
+}
+
+async function candidatesFromHits(
+  hits: ComickSearchHit[],
+): Promise<CatalogCandidate[]> {
+  const items: CatalogCandidate[] = [];
+  for (const hit of hits) {
+    const candidate = await candidateFromHit(hit);
+    if (candidate) items.push(candidate);
+  }
+  return items;
+}
+
 function toCandidate(hit: ComickSearchHit): CatalogCandidate | null {
   const hid = hit.hid?.trim();
   const slug = hit.slug?.trim();
   const title = hit.title?.trim();
   if (!hid || !title) return null;
-  const path = slug ? `/comic/${slug}` : `/comic/${hid}`;
   return {
     // Slug, not hid: Cloudflare often 403s `/comic/{hid}` but allows `/comic/{slug}`.
     id: slug || hid,
@@ -189,7 +217,7 @@ function toCandidate(hit: ComickSearchHit): CatalogCandidate | null {
     author: hit.author ?? null,
     artist: hit.artist ?? null,
     lastChapter: hit.last_chapter != null ? String(hit.last_chapter) : null,
-    url: `${SITE}${path}`,
+    url: comicSiteUrl(hit),
   };
 }
 
@@ -381,7 +409,13 @@ export const comickEngine: ReaderSourceEngine = {
   name: "Comick",
   aliases: ["ComicK", "Comickfun", "comick.io", "comick.dev"],
   hosts: ["comick.dev", "comick.io", "comick.fun", "comick.app", "api.comick.dev"],
-  imageHosts: ["meo.comick.pictures", "comick.pictures", "comick.dev", "comick.io"],
+  imageHosts: [
+    "meo.comick.pictures",
+    "comick.pictures",
+    "comicknew.pictures",
+    "comick.dev",
+    "comick.io",
+  ],
   imageReferer: `${SITE}/`,
 
   async search(query) {
@@ -390,9 +424,9 @@ export const comickEngine: ReaderSourceEngine = {
       const candidate = toCandidate(await fetchComic(fromUrl));
       return candidate ? [candidate] : [];
     }
-    return (await searchComick({ query, page: 1, limit: 20 }))
-      .map(toCandidate)
-      .filter((item): item is CatalogCandidate => item != null);
+    return candidatesFromHits(
+      await searchComick({ query, page: 1, limit: 20 }),
+    );
   },
 
   async browse(query: SourceBrowseQuery): Promise<SourceBrowsePage> {
@@ -414,9 +448,7 @@ export const comickEngine: ReaderSourceEngine = {
       sort: query.sort,
       required: true,
     });
-    let items = hits
-      .map(toCandidate)
-      .filter((item): item is CatalogCandidate => item != null);
+    let items = await candidatesFromHits(hits);
     if (query.hideAdult) items = items.filter((item) => !item.isAdult);
     return {
       items,
@@ -470,6 +502,12 @@ export const comickEngine: ReaderSourceEngine = {
       chapters,
       sourceKey: "comick",
       sourceName: "Comick",
+      sourceUrl: comicSiteUrl(comic),
+      coverUrl: parseCover(
+        comic.cover_url,
+        comic.md_covers,
+        comic.iso639_1 ?? comic.country,
+      ),
     };
   },
 

@@ -12,6 +12,7 @@ import { AdminBookPanel } from "@/components/admin-book-panel";
 import { CoverImage } from "@/components/cover-image";
 import { StarsDisplay } from "@/components/stars";
 import { UserBookForm } from "@/components/user-book-form";
+import { OpenOnSourceLink } from "@/components/open-on-source-link";
 import { Badge } from "@/components/ui/badge";
 import { categoryLabel, categorySlug } from "@/lib/categories";
 import {
@@ -21,6 +22,7 @@ import {
   pagesMetadataLabel,
 } from "@/lib/publication";
 import { genreStoreHref, storePageHref } from "@/lib/store-query";
+import { isReadingSourceUrl } from "@/lib/reader/source-link";
 
 type BookPreview = {
   book: Book;
@@ -227,6 +229,12 @@ function BookDetailBody({
             {categoryLabel(book.category)}
           </Badge>
         </Link>
+        {isReadingSourceUrl(book.sourceUrl) ? (
+          <OpenOnSourceLink
+            href={book.sourceUrl}
+            sourceName={book.sourceName}
+          />
+        ) : null}
         {(book.category === "MANGA" || book.category === "LIGHT_NOVEL") &&
           book.publicationStatus !== "UNKNOWN" && (
             <Badge
@@ -278,7 +286,20 @@ function BookDetailBody({
             <MetadataItem label="Artist">{book.artist}</MetadataItem>
           )}
           {book.sourceName && (
-            <MetadataItem label="Source">{book.sourceName}</MetadataItem>
+            <MetadataItem label="Source">
+              {isReadingSourceUrl(book.sourceUrl) ? (
+                <a
+                  href={book.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-violet-300 hover:text-violet-200"
+                >
+                  {book.sourceName}
+                </a>
+              ) : (
+                book.sourceName
+              )}
+            </MetadataItem>
           )}
 
           {book.genres.length > 0 && (

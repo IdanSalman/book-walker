@@ -60,6 +60,7 @@ export default async function BrowseStorePage({
   const query = qParam?.trim() ?? "";
   const sort = parseStoreSort(sortParam);
   const hideAdult = session.user.hideAdultContent ?? true;
+  const hideRead = session.user.hideReadTitles ?? false;
   const contentFilter = parseStoreContentFilter(contentParam, hideAdult);
   const contentUrl =
     contentFilter === "all" ? undefined : contentFilter;
@@ -71,6 +72,8 @@ export default async function BrowseStorePage({
 
   const genresPromise = getStoreGenres(contentFilter, {
     category: categoryFilter,
+    userId: session.user.id,
+    hideRead,
   });
 
   let validGenre: string | undefined;
@@ -94,6 +97,8 @@ export default async function BrowseStorePage({
     category: categoryParam,
     genre: validGenre,
     hideAdult,
+    hideRead,
+    userId: session.user.id,
     content: contentUrl,
     publication: showPublicationFilters ? publicationParam : undefined,
     q: query,
@@ -256,6 +261,14 @@ export default async function BrowseStorePage({
           {hideAdult && (
             <p className="mt-2 text-sm text-zinc-500">
               Adult content is hidden.{" "}
+              <Link href="/account" className="text-violet-400 hover:text-violet-300">
+                Change in account
+              </Link>
+            </p>
+          )}
+          {hideRead && (
+            <p className="mt-2 text-sm text-zinc-500">
+              Completed titles are hidden.{" "}
               <Link href="/account" className="text-violet-400 hover:text-violet-300">
                 Change in account
               </Link>

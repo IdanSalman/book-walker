@@ -6,6 +6,9 @@ import {
   mangaDexIdFromUrl,
   normalizeMangaDexUrl,
 } from "@/lib/publication";
+import { latestChapterNumber } from "@/lib/reader/chapter-progress";
+import type { ReaderBookRef } from "@/lib/reader/source-engine";
+import { isReadingSourceUrl } from "@/lib/reader/source-link";
 
 const ANILIST_URL = "https://graphql.anilist.co";
 
@@ -13,8 +16,10 @@ export type SyncResult = {
   totalPages: number;
   publicationStatus: PublicationStatus;
   sourceUrl?: string;
+  sourceName?: string;
   externalId?: string;
   lastSyncedAt: Date;
+  syncedFrom?: string;
 };
 
 function sleep(ms: number) {
@@ -132,6 +137,7 @@ export async function fetchAnilistById(anilistId: number): Promise<SyncResult> {
     externalId: `anilist:${media.id}`,
     sourceUrl: `https://anilist.co/manga/${media.id}`,
     lastSyncedAt: new Date(),
+    syncedFrom: "AniList",
   };
 }
 
@@ -178,6 +184,7 @@ export async function searchAnilistByTitle(
     externalId: `anilist:${match.id}`,
     sourceUrl: `https://anilist.co/manga/${match.id}`,
     lastSyncedAt: new Date(),
+    syncedFrom: "AniList",
   };
 }
 
@@ -230,6 +237,7 @@ export async function fetchMangaDexByUrl(sourceUrl: string): Promise<SyncResult>
     publicationStatus: mapMangaDexStatus(attributes.status),
     sourceUrl: normalizedUrl,
     lastSyncedAt: new Date(),
+    syncedFrom: "MangaDex",
   };
 }
 
@@ -237,13 +245,18 @@ export async function syncBookMetadata(book: {
   title: string;
   externalId: string | null;
   sourceUrl: string | null;
+  sourceName?: string | null;
+  publicationStatus?: PublicationStatus;
 }): Promise<SyncResult> {
+  const fromSource = await syncFromCurrentSource(book);
+  if (fromSource) return fromSource;
+
   if (book.externalId?.startsWith("anilist:")) {
     const id = Number(book.externalId.slice("anilist:".length));
     if (!Number.isFinite(id)) {
       throw new Error("Invalid AniList external ID");
     }
-    return fetchAnilistById(id);
+    return keepReadingSourceUrl(book, await fetchAnilistById(id));
   }
 
   if (book.sourceUrl && isMangaDexUrl(book.sourceUrl)) {
@@ -251,9 +264,43 @@ export async function syncBookMetadata(book: {
   }
 
   const fromSearch = await searchAnilistByTitle(book.title);
-  if (fromSearch) return fromSearch;
+  if (fromSearch) return keepReadingSourceUrl(book, fromSearch);
 
   throw new Error(
-    "No sync source configured. Set an AniList external ID or MangaDex source URL.",
+    "No sync source configured. Set a reading source, AniList external ID, or MangaDex URL.",
   );
+}
+
+async function syncFromCurrentSource(
+  book: ReaderBookRef & { publicationStatus?: PublicationStatus },
+): Promise<SyncResult | null> {
+  const { currentReadingEngine } = await import("@/lib/reader/resolve");
+  const engine = await currentReadingEngine(book);
+  if (!engine) return null;
+
+  try {
+    const resolved = await engine.resolveManga(book);
+    if (resolved.chapters.length === 0) return null;
+    return {
+      totalPages: latestChapterNumber(resolved.chapters),
+      publicationStatus: book.publicationStatus ?? "UNKNOWN",
+      sourceUrl: resolved.sourceUrl ?? book.sourceUrl ?? undefined,
+      sourceName: resolved.sourceName ?? engine.name,
+      lastSyncedAt: new Date(),
+      syncedFrom: resolved.sourceName || engine.name,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function keepReadingSourceUrl(
+  book: { sourceUrl: string | null },
+  result: SyncResult,
+): SyncResult {
+  if (!isReadingSourceUrl(book.sourceUrl)) return result;
+  return {
+    ...result,
+    sourceUrl: undefined,
+  };
 }

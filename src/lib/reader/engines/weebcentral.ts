@@ -334,6 +334,7 @@ export const weebCentralEngine: ReaderSourceEngine = {
       chapters,
       sourceKey: "weebcentral",
       sourceName: "Weeb Central",
+      sourceUrl: `${SITE}/series/${seriesId}`,
     };
   },
 

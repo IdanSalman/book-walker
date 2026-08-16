@@ -1,6 +1,7 @@
 import { ChapterList } from "@/components/chapter-list";
 import { getMangaWithChapters } from "@/lib/reader/resolve";
 import type { ReaderChapter } from "@/lib/reader/types";
+import { applyResolvedListing } from "@/lib/sources/repair-cover";
 
 export async function ReadableChapterSection({
   book,
@@ -9,6 +10,8 @@ export async function ReadableChapterSection({
   book: {
     id: string;
     title: string;
+    coverUrl: string;
+    coverCorrupted: boolean;
     sourceUrl: string | null;
     sourceName: string | null;
     externalId: string | null;
@@ -17,12 +20,15 @@ export async function ReadableChapterSection({
 }) {
   let chapters: ReaderChapter[] | null = null;
   let sourceName: string | null = null;
+  let sourceUrl: string | null = null;
   let errorMessage: string | null = null;
 
   try {
     const resolved = await getMangaWithChapters(book);
     chapters = resolved.chapters;
     sourceName = resolved.sourceName;
+    sourceUrl = resolved.sourceUrl;
+    await applyResolvedListing(book, resolved);
   } catch (error) {
     errorMessage =
       error instanceof Error
@@ -49,6 +55,7 @@ export async function ReadableChapterSection({
       chapters={chapters}
       currentPage={currentPage}
       sourceName={sourceName}
+      sourceUrl={sourceUrl}
     />
   );
 }

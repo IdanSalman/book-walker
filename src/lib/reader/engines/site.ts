@@ -747,6 +747,7 @@ export function createSiteEngine(source: SiteSourceConfig): ReaderSourceEngine {
         chapters,
         sourceKey: source.key,
         sourceName: source.name,
+        sourceUrl: seriesUrl,
       };
     },
 

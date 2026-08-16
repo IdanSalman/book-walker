@@ -4,10 +4,18 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { BookOpen, ChevronDown } from "lucide-react";
 
+import { OpenOnSourceLink } from "@/components/open-on-source-link";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  chapterListRows,
+  continueChapterIndex,
+  formatChapterGap,
+  gapSize,
+  isChapterRead,
+  missingChapterCount,
+} from "@/lib/reader/chapter-progress";
 import type { ReaderChapter } from "@/lib/reader/types";
-import { continueChapterIndex } from "@/lib/reader/types";
 import { readerChapterHref } from "@/lib/reader/source-id";
 import { cn } from "@/lib/utils";
 
@@ -16,21 +24,26 @@ export function ChapterList({
   chapters,
   currentPage,
   sourceName,
+  sourceUrl,
 }: {
   bookId: string;
   chapters: ReaderChapter[];
   currentPage: number;
   sourceName?: string | null;
+  sourceUrl?: string | null;
 }) {
   const [newestFirst, setNewestFirst] = useState(true);
 
-  const continueIndex = continueChapterIndex(currentPage, chapters.length);
+  const continueIndex = continueChapterIndex(currentPage, chapters);
   const continueChapter = chapters[continueIndex];
-
-  const ordered = useMemo(
-    () => (newestFirst ? [...chapters].reverse() : chapters),
-    [chapters, newestFirst],
+  const missingCount = useMemo(
+    () => missingChapterCount(chapters),
+    [chapters],
   );
+  const orderedRows = useMemo(() => {
+    const rows = chapterListRows(chapters);
+    return newestFirst ? [...rows].reverse() : rows;
+  }, [chapters, newestFirst]);
 
   if (chapters.length === 0) {
     return (
@@ -51,6 +64,9 @@ export function ChapterList({
             {chapters.length.toLocaleString()} chapter
             {chapters.length === 1 ? "" : "s"}
             {sourceName ? ` · ${sourceName}` : ""}
+            {missingCount > 0
+              ? ` · ${missingCount.toLocaleString()} missing chapter${missingCount === 1 ? "" : "s"}`
+              : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -62,6 +78,9 @@ export function ChapterList({
               <BookOpen className="h-4 w-4" />
               {currentPage > 0 ? "Continue reading" : "Start reading"}
             </Link>
+          )}
+          {sourceUrl && (
+            <OpenOnSourceLink href={sourceUrl} sourceName={sourceName} />
           )}
           <Button
             type="button"
@@ -81,12 +100,28 @@ export function ChapterList({
       </div>
 
       <ol className="max-h-[70vh] divide-y divide-zinc-800 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900/50">
-        {ordered.map((chapter, displayIndex) => {
-          const sourceIndex = newestFirst
-            ? chapters.length - 1 - displayIndex
-            : displayIndex;
-          const read = currentPage > 0 && sourceIndex < currentPage;
-          const current = sourceIndex === continueIndex && currentPage > 0;
+        {orderedRows.map((row) => {
+          if (row.type === "gap") {
+            const count = gapSize(row.gap);
+            return (
+              <li
+                key={`gap-${row.gap.start}-${row.gap.end}`}
+                className="flex items-center justify-between gap-3 bg-amber-950/20 px-4 py-2.5"
+              >
+                <p className="text-xs font-medium text-amber-200/90">
+                  {formatChapterGap(row.gap)}
+                </p>
+                <Badge className="shrink-0 border-amber-800/80 bg-amber-950/70 text-amber-100">
+                  {count} missing
+                </Badge>
+              </li>
+            );
+          }
+
+          const { chapter, sourceIndex } = row;
+          const read = isChapterRead(chapter, currentPage, sourceIndex);
+          const current =
+            sourceIndex === continueIndex && currentPage > 0 && !read;
 
           return (
             <li key={chapter.id}>

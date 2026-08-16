@@ -55,6 +55,7 @@ model User {
   image               String?
   role                Role       @default(USER)
   hideAdultContent    Boolean    @default(true)
+  hideReadTitles      Boolean    @default(false)
   onboardingComplete  Boolean    @default(false)
   accounts            Account[]
   sessions            Session[]
