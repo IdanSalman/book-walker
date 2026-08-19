@@ -2,7 +2,10 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 
 import { hideAdultUserBookFilter } from "@/lib/adult-content";
-import { hideReadUserBookFilter } from "@/lib/hide-read-titles";
+import {
+  getCaughtUpBookIds,
+  hideReadUserBookFilter,
+} from "@/lib/hide-read-titles";
 import { libraryNavTag } from "@/lib/cache-tags";
 import { prisma } from "@/lib/prisma";
 
@@ -25,14 +28,15 @@ async function loadLibraryNav(
   hideAdult: boolean,
   hideRead: boolean,
 ): Promise<LibraryNavData> {
+  const caughtUpBookIds = hideRead ? await getCaughtUpBookIds(userId) : [];
   const userBookFilter = {
     ...hideAdultUserBookFilter(hideAdult),
-    ...hideReadUserBookFilter(hideRead),
+    ...hideReadUserBookFilter(hideRead, caughtUpBookIds),
   };
   const joinFilter = {
     userBook: {
       ...(hideAdult ? { book: { isAdult: false } } : {}),
-      ...hideReadUserBookFilter(hideRead),
+      ...hideReadUserBookFilter(hideRead, caughtUpBookIds),
     },
   };
 

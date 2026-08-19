@@ -1,17 +1,17 @@
 -- CreateIndex
-CREATE INDEX "Book_title_idx" ON "Book"("title");
+CREATE INDEX IF NOT EXISTS "Book_title_idx" ON "Book"("title");
 
 -- CreateIndex
-CREATE INDEX "Book_isAdult_category_idx" ON "Book"("isAdult", "category");
+CREATE INDEX IF NOT EXISTS "Book_isAdult_category_idx" ON "Book"("isAdult", "category");
 
 -- CreateIndex
-CREATE INDEX "Book_publicationStatus_idx" ON "Book"("publicationStatus");
+CREATE INDEX IF NOT EXISTS "Book_publicationStatus_idx" ON "Book"("publicationStatus");
 
 -- CreateIndex
-CREATE INDEX "UserBook_userId_updatedAt_idx" ON "UserBook"("userId", "updatedAt");
+CREATE INDEX IF NOT EXISTS "UserBook_userId_updatedAt_idx" ON "UserBook"("userId", "updatedAt");
 
 -- CreateIndex
-CREATE INDEX "UserBook_userId_status_idx" ON "UserBook"("userId", "status");
+CREATE INDEX IF NOT EXISTS "UserBook_userId_status_idx" ON "UserBook"("userId", "status");
 
 -- CreateIndex
-CREATE INDEX "UserBook_bookId_idx" ON "UserBook"("bookId");
+CREATE INDEX IF NOT EXISTS "UserBook_bookId_idx" ON "UserBook"("bookId");

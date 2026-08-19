@@ -9,6 +9,7 @@ declare module "next-auth" {
       onboardingComplete: boolean;
       hideAdultContent: boolean;
       hideReadTitles: boolean;
+      defaultReadingMode: string;
     } & DefaultSession["user"];
   }
 
@@ -25,5 +26,6 @@ declare module "next-auth/jwt" {
     onboardingComplete?: boolean;
     hideAdultContent?: boolean;
     hideReadTitles?: boolean;
+    defaultReadingMode?: string;
   }
 }

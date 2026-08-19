@@ -95,7 +95,7 @@ export function AdminSourceForm({
 
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-2">
-            <Label htmlFor="kind">Type</Label>
+            <Label htmlFor="kind">Access type</Label>
             <Select
               id="kind"
               name="kind"

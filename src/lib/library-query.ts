@@ -51,6 +51,7 @@ export function buildLibraryWhere(
     q?: string;
     hideAdult?: boolean;
     hideRead?: boolean;
+    caughtUpBookIds?: string[];
   },
 ): Prisma.UserBookWhereInput {
   const selected = params.category
@@ -94,29 +95,38 @@ export function buildLibraryWhere(
     userId,
     ...collectionFilter,
     ...(status ? { status } : {}),
-    ...hideReadUserBookFilter(Boolean(params.hideRead), status),
+    ...hideReadUserBookFilter(
+      Boolean(params.hideRead),
+      params.caughtUpBookIds ?? [],
+      status,
+    ),
     ...(Object.keys(bookFilter).length ? { book: bookFilter } : {}),
   };
 }
 
 export function libraryOrderBy(
   sort: LibrarySort,
-): Prisma.UserBookOrderByWithRelationInput | Prisma.UserBookOrderByWithRelationInput[] {
+): Prisma.UserBookOrderByWithRelationInput[] {
+  const id: Prisma.UserBookOrderByWithRelationInput = { id: "asc" };
   switch (sort) {
     case "title-asc":
-      return { book: { title: "asc" } };
+      return [{ book: { title: "asc" } }, id];
     case "title-desc":
-      return { book: { title: "desc" } };
+      return [{ book: { title: "desc" } }, id];
     case "rating-desc":
-      return [{ rating: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }];
+      return [
+        { rating: { sort: "desc", nulls: "last" } },
+        { updatedAt: "desc" },
+        id,
+      ];
     case "progress-desc":
-      return { currentPage: "desc" };
+      return [{ currentPage: "desc" }, id];
     case "added-desc":
-      return [{ addedAt: "desc" }, { book: { title: "asc" } }];
+      return [{ addedAt: "desc" }, { book: { title: "asc" } }, id];
     case "added-asc":
-      return [{ addedAt: "asc" }, { book: { title: "asc" } }];
+      return [{ addedAt: "asc" }, { book: { title: "asc" } }, id];
     default:
-      return { updatedAt: "desc" };
+      return [{ updatedAt: "desc" }, id];
   }
 }
 

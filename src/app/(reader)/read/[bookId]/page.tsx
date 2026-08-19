@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { ReaderUnavailable } from "@/components/reader-unavailable";
 import { shouldHideAdultBook } from "@/lib/adult-content";
 import { prisma } from "@/lib/prisma";
 import { continueChapterIndex } from "@/lib/reader/chapter-progress";
@@ -52,14 +52,12 @@ export default async function ReadIndexPage({
   }
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-zinc-950 px-4 text-center">
-      <p className="max-w-lg text-zinc-300">
-        {errorMessage ??
-          "No readable chapters were found for this title on the enabled sources."}
-      </p>
-      <Link href={`/books/${bookId}`} className="text-sm text-violet-400">
-        Back to title
-      </Link>
-    </div>
+    <ReaderUnavailable
+      bookId={bookId}
+      message={
+        errorMessage ??
+        "No readable chapters were found for this title on the enabled sources."
+      }
+    />
   );
 }

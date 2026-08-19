@@ -7,17 +7,24 @@
 
 import type { PublicationStatus } from "@prisma/client";
 
-import { assertNotBlocked } from "@/lib/reader/html";
+import { asuraEngine } from "@/lib/reader/engines/asura";
+import { createSiteEngine } from "@/lib/reader/engines/site";
+import { assertNotBlocked, originOf } from "@/lib/reader/html";
 import {
   parseChapterNumber,
   sourceFetch,
   uniqueUrls,
 } from "@/lib/reader/source-fetch";
-import { encodeChapterId, normalizeTitle, titlesMatch } from "@/lib/reader/source-id";
+import {
+  encodeChapterId,
+  normalizeTitle,
+  titlesMatch,
+} from "@/lib/reader/source-id";
 import type { ReaderSourceEngine } from "@/lib/reader/source-engine";
 import type {
   CatalogCandidate,
   ReaderChapter,
+  ReaderPage,
   ResolvedManga,
 } from "@/lib/reader/types";
 import type {
@@ -83,6 +90,29 @@ type ComickChapter = {
 type ComickPage = {
   url?: string | null;
   b2key?: string | null;
+};
+
+type ComickLink = {
+  id?: string | null;
+  slug?: string | null;
+  enable?: boolean | null;
+};
+
+type ComickChapterDetail = {
+  chapter?: {
+    chap?: string | number | null;
+    images?: ComickPage[];
+    md_images?: ComickPage[];
+    group_name?: string[] | null;
+    md_chapters_groups?: {
+      md_groups?: { slug?: string | null; title?: string | null };
+    }[];
+    md_comics?: {
+      title?: string | null;
+      slug?: string | null;
+      links2?: ComickLink[];
+    };
+  };
 };
 
 async function comickJson<T>(
@@ -388,6 +418,222 @@ async function fetchChapters(comic: ComickSearchHit): Promise<ReaderChapter[]> {
   }).sort((a, b) => a.chapterNumber - b.chapterNumber);
 }
 
+function compactToken(value: string | null | undefined): string {
+  return (value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function pageUrlsFromImages(images: ComickPage[] | undefined): string[] {
+  return uniqueUrls(
+    (images ?? [])
+      .map((image) => {
+        if (image.url?.startsWith("http")) return image.url;
+        if (image.b2key) return `${COVER}/${image.b2key.replace(/^\//, "")}`;
+        return null;
+      })
+      .filter((url): url is string => Boolean(url)),
+  );
+}
+
+function toPages(urls: string[], referer?: string): ReaderPage[] {
+  return urls.map((url, index) =>
+    referer ? { index, url, referer } : { index, url },
+  );
+}
+
+function pickOriginalLink(
+  links: ComickLink[] | undefined,
+  groupSlug: string | null,
+  groupTitle: string | null,
+): ComickLink | null {
+  const enabled = (links ?? []).filter(
+    (link) => link.enable !== false && (link.id || link.slug),
+  );
+  if (enabled.length === 0) return null;
+  const needles = [groupSlug, groupTitle].map(compactToken).filter(Boolean);
+  return (
+    enabled.find((link) => {
+      const id = compactToken(link.id);
+      return needles.some(
+        (needle) => id === needle || id.includes(needle) || needle.includes(id),
+      );
+    }) ?? enabled[0]
+  );
+}
+
+async function groupSiteOrigin(groupSlug: string): Promise<string | null> {
+  const json = await comickJsonOrNull<{ group?: { links?: string[] } }>(
+    `/group/${encodeURIComponent(groupSlug)}`,
+    3600,
+  );
+  const link = json?.group?.links?.find((item) => /^https?:\/\//i.test(item));
+  if (!link) return null;
+  try {
+    return originOf(link);
+  } catch {
+    return null;
+  }
+}
+
+async function pagesFromEngineChapter(
+  engine: ReturnType<typeof createSiteEngine>,
+  origin: string,
+  paths: string[],
+): Promise<ReaderPage[]> {
+  const referer = `${origin}/`;
+  for (const path of paths) {
+    try {
+      const pages = await engine.getPageList(path);
+      if (pages.length > 0) {
+        return pages.map((page) => ({
+          ...page,
+          referer: page.referer ?? referer,
+        }));
+      }
+    } catch {
+      /* try the next constructed chapter URL */
+    }
+  }
+  return [];
+}
+
+function chapterPathCandidates(seriesSlug: string, chap: string): string[] {
+  return [
+    `/comics/${seriesSlug}/chapter/${chap}`,
+    `/${seriesSlug}-chapter-${chap}/`,
+    `/series/${seriesSlug}/chapter-${chap}/`,
+    `/manga/${seriesSlug}/chapter-${chap}/`,
+  ];
+}
+
+const SKIP_ORIGINAL_IDS = new Set([
+  "amazon",
+  "bato",
+  "batoto",
+  "kakao",
+  "kagane",
+  "reaper",
+  "reaperscans",
+  "tapas",
+  "webtoon",
+  "webtoons",
+  "yenpress",
+]);
+
+const KNOWN_ORIGINAL_ORIGINS: Record<string, string> = {
+  asura: "https://asurascans.com",
+  asurascans: "https://asurascans.com",
+};
+
+function originalLinkId(link: ComickLink): string {
+  return (link.id ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function isSkippedOriginal(id: string): boolean {
+  return [...SKIP_ORIGINAL_IDS].some(
+    (skip) => id === skip || id.includes(skip),
+  );
+}
+
+async function pagesFromAsuraLink(
+  slug: string,
+  chap: string,
+): Promise<ReaderPage[]> {
+  try {
+    const pages = await asuraEngine.getPageList(`${slug}:${chap}`);
+    if (pages.length === 0) return [];
+    return pages.map((page) => ({
+      ...page,
+      referer: page.referer ?? asuraEngine.imageReferer,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function originForLink(
+  link: ComickLink,
+  fallbackSlug: string | null,
+): Promise<string | null> {
+  const host = originalLinkId(link);
+  if (isSkippedOriginal(host)) return null;
+  const known = KNOWN_ORIGINAL_ORIGINS[host];
+  if (known) return known;
+  const slugs = [fallbackSlug, host].filter((value, index, all): value is string => {
+    return Boolean(value) && all.indexOf(value) === index;
+  });
+  for (const slug of slugs) {
+    if (isSkippedOriginal(slug)) continue;
+    const origin = await groupSiteOrigin(slug);
+    if (origin) return origin;
+  }
+  return null;
+}
+
+async function pagesFromOriginalSite(
+  detail: ComickChapterDetail,
+): Promise<ReaderPage[]> {
+  const chapter = detail.chapter;
+  if (!chapter) return [];
+  const groupSlug =
+    chapter.md_chapters_groups
+      ?.map((row) => row.md_groups?.slug?.trim())
+      .find(Boolean) ??
+    chapter.group_name
+      ?.map((name) => name.trim().toLowerCase().replace(/\s+/g, "-"))
+      .find(Boolean) ??
+    null;
+  const groupTitle = chapter.group_name?.find(Boolean) ?? null;
+  const chap =
+    chapter.chap != null ? String(chapter.chap).replace(/\.0$/, "") : "";
+  const chapterNumber = parseChapterNumber(chap);
+  if (chapterNumber < 0) return [];
+
+  const matched = pickOriginalLink(
+    chapter.md_comics?.links2,
+    groupSlug,
+    groupTitle,
+  );
+  const links = [
+    matched,
+    ...(chapter.md_comics?.links2 ?? []).filter((link) => link !== matched),
+  ].filter((link): link is ComickLink => Boolean(link?.slug));
+
+  const asuraLink = links.find((link) => {
+    const id = originalLinkId(link);
+    return id.includes("asura");
+  });
+  if (asuraLink?.slug) {
+    const pages = await pagesFromAsuraLink(asuraLink.slug, chap);
+    if (pages.length > 0) return pages;
+  }
+
+  const seenOrigins = new Set<string>();
+  let attempts = 0;
+  for (const link of links) {
+    if (attempts >= 2) break;
+    if (originalLinkId(link).includes("asura")) continue;
+    const origin = await originForLink(link, groupSlug);
+    if (!origin || seenOrigins.has(origin)) continue;
+    seenOrigins.add(origin);
+    const seriesSlug = link.slug?.trim();
+    if (!seriesSlug) continue;
+    attempts += 1;
+
+    const engine = createSiteEngine({
+      key: "comick-origin",
+      name: groupTitle || "Comick",
+      baseUrl: origin,
+    });
+    const pages = await pagesFromEngineChapter(
+      engine,
+      origin,
+      chapterPathCandidates(seriesSlug, chap),
+    );
+    if (pages.length > 0) return pages;
+  }
+  return [];
+}
+
 export function isComickSource(source: {
   key?: string;
   name?: string;
@@ -512,22 +758,27 @@ export const comickEngine: ReaderSourceEngine = {
   },
 
   async getPageList(payload) {
-    const json = await comickJson<{
-      chapter?: { images?: ComickPage[]; md_images?: ComickPage[] };
-    }>(`/chapter/${encodeURIComponent(payload)}?tachiyomi=true`, false);
-    const images = json.chapter?.images ?? json.chapter?.md_images ?? [];
-    const urls = uniqueUrls(
-      images
-        .map((image) => {
-          if (image.url?.startsWith("http")) return image.url;
-          if (image.b2key) return `${COVER}/${image.b2key}`;
-          return null;
-        })
-        .filter((url): url is string => Boolean(url)),
+    // tachiyomi=true no longer includes page lists; use the public chapter
+    // payload (md_images) and /get_images, then the original scanlation site.
+    const json = await comickJson<ComickChapterDetail>(
+      `/chapter/${encodeURIComponent(payload)}`,
+      false,
+    );
+    let urls = pageUrlsFromImages(
+      json.chapter?.md_images ?? json.chapter?.images,
     );
     if (urls.length === 0) {
-      throw new Error("Chapter pages are unavailable");
+      const listed = await comickJsonOrNull<ComickPage[]>(
+        `/chapter/${encodeURIComponent(payload)}/get_images`,
+        false,
+      );
+      urls = pageUrlsFromImages(listed ?? undefined);
     }
-    return urls.map((url, index) => ({ index, url }));
+    if (urls.length > 0) return toPages(urls);
+
+    const fallback = await pagesFromOriginalSite(json);
+    if (fallback.length > 0) return fallback;
+
+    throw new Error("Chapter pages are unavailable");
   },
 };

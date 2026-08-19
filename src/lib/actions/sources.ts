@@ -20,6 +20,7 @@ import {
   type ImportMode,
   type ImportOutcome,
 } from "@/lib/sources/import-title";
+import { catalogCategoryForCandidate } from "@/lib/sources/catalog-kind";
 import { importMangaDexTitle } from "@/lib/sources/mangadex-catalog";
 import { withCoverFromSources } from "@/lib/sources/repair-cover";
 import {
@@ -39,6 +40,7 @@ import {
   normalizeSourceHost,
   type MihonCatalogSource,
 } from "@/lib/sources/mihon-catalog";
+import { ensureBuiltInSources } from "@/lib/sources/ensure";
 import {
   BUILT_IN_SOURCES,
   builtInSource,
@@ -591,20 +593,15 @@ export async function resyncSourceBooks(
 export async function addMissingBuiltInSources(): Promise<SourceActionState> {
   await requireAdmin();
 
-  const existing = await prisma.fetchSource.findMany({ select: { key: true } });
-  const keys = new Set(existing.map((source) => source.key));
-  const missing = BUILT_IN_SOURCES.filter((preset) => !keys.has(preset.key));
-
-  if (missing.length === 0) {
+  const added = await ensureBuiltInSources();
+  if (added.length === 0) {
     return { error: "All built-in sources are already configured" };
   }
-
-  await prisma.fetchSource.createMany({ data: missing.map(builtInSourceData) });
 
   revalidateSources();
   return {
     success: true,
-    message: `Added ${missing.map((preset) => preset.name).join(", ")}`,
+    message: `Added ${added.join(", ")}`,
   };
 }
 
@@ -787,34 +784,37 @@ async function importOneTitle(
   engine: ReaderSourceEngine,
   options?: AddToStoreOptions,
 ): Promise<ImportOutcome> {
+  const extras = { ...options, sourceKey: source.key };
+
   if (source.key === "mangadex") {
     try {
-      return await importMangaDexTitle(mangaId, source.name, options);
+      return await importMangaDexTitle(mangaId, source.name, extras);
     } catch (error) {
       if (isCatalogConflictError(error)) throw error;
       if (!(error instanceof Error) || !/no cover/i.test(error.message)) {
         throw error;
       }
-      const candidate = await withCoverFromSources(
-        await candidateForImport(engine, mangaId),
-        source.key,
-      );
-      if (!candidate.coverUrl) throw error;
-      return importCatalogCandidate(candidate, source.name, options);
     }
   }
 
-  return importCatalogCandidate(
-    await withCoverFromSources(
-      await candidateForImport(engine, mangaId),
-      source.key,
-    ),
-    source.name,
-    {
-      ...options,
-      externalId: engine.key === "comick" ? mangaId : null,
-    },
+  const listing = await candidateForImport(engine, mangaId);
+  const category = catalogCategoryForCandidate(
+    { key: source.key },
+    listing.genres,
   );
+  const candidate = await withCoverFromSources(
+    listing,
+    source.key,
+    category,
+  );
+  if (source.key === "mangadex" && !candidate.coverUrl) {
+    throw new Error(`${listing.title}: no cover art on MangaDex`);
+  }
+  return importCatalogCandidate(candidate, source.name, {
+    ...extras,
+    externalId: engine.key === "comick" ? mangaId : null,
+    category,
+  });
 }
 
 async function candidateForImport(

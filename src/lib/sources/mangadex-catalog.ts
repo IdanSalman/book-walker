@@ -87,7 +87,10 @@ function coverUrlFor(manga: MangaData): string | null {
 function genresFor(manga: MangaData): string[] {
   const tags = manga.attributes?.tags ?? [];
   return tags
-    .filter((tag) => tag.attributes?.group === "genre" || tag.attributes?.group === "theme")
+    .filter((tag) => {
+      const group = tag.attributes?.group;
+      return group === "genre" || group === "theme" || group === "format";
+    })
     .map((tag) => localizedTitle(tag.attributes?.name))
     .filter(Boolean)
     .slice(0, 20);
@@ -235,7 +238,7 @@ export type { ImportOutcome } from "@/lib/sources/import-title";
 export async function importMangaDexTitle(
   mangaId: string,
   sourceName: string,
-  extras?: Pick<ImportExtras, "mode" | "migrateBookId">,
+  extras?: Pick<ImportExtras, "mode" | "migrateBookId" | "sourceKey">,
 ): Promise<ImportOutcome> {
   const candidate = mapCandidate(await fetchMangaById(mangaId));
   if (!candidate.coverUrl) {
@@ -253,6 +256,7 @@ export async function importMangaDexTitle(
     publicationStatus: sync?.publicationStatus,
     mode: extras?.mode,
     migrateBookId: extras?.migrateBookId,
+    sourceKey: extras?.sourceKey ?? "mangadex",
   });
 }
 

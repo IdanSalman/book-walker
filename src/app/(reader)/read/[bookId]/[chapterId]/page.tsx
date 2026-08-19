@@ -1,11 +1,12 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { MangaReader } from "@/components/manga-reader";
+import { ReaderUnavailable } from "@/components/reader-unavailable";
 import { shouldHideAdultBook } from "@/lib/adult-content";
 import { prisma } from "@/lib/prisma";
 import { canReadBook } from "@/lib/reader/access";
 import { getMangaWithChapters } from "@/lib/reader/resolve";
-import { isChapterId } from "@/lib/reader/source-id";
+import { decodeChapterIdParam, isChapterId } from "@/lib/reader/source-id";
 import { defaultReadingMode } from "@/lib/reader/types";
 import { requireUser } from "@/lib/session";
 
@@ -15,9 +16,11 @@ export default async function ReadChapterPage({
   params: Promise<{ bookId: string; chapterId: string }>;
 }) {
   const { bookId, chapterId: rawChapterId } = await params;
-  const chapterId = decodeURIComponent(rawChapterId);
+  const chapterId = decodeChapterIdParam(
+    Array.isArray(rawChapterId) ? rawChapterId.join("/") : rawChapterId,
+  );
   if (!isChapterId(chapterId)) {
-    notFound();
+    redirect(`/read/${bookId}`);
   }
   const session = await requireUser();
   const hideAdult = session.user.hideAdultContent ?? true;
@@ -34,19 +37,29 @@ export default async function ReadChapterPage({
     }),
   ]);
 
-  if (!book || shouldHideAdultBook(hideAdult, book.isAdult) || !userBook || !canReadBook(book, true)) {
-    notFound();
+  if (
+    !book ||
+    shouldHideAdultBook(hideAdult, book.isAdult) ||
+    !userBook ||
+    !canReadBook(book, true)
+  ) {
+    redirect(`/books/${bookId}`);
   }
 
   let resolved;
   try {
     resolved = await getMangaWithChapters(book);
-  } catch {
-    notFound();
-  }
-
-  if (!resolved.chapters.some((chapter) => chapter.id === chapterId)) {
-    notFound();
+  } catch (error) {
+    return (
+      <ReaderUnavailable
+        bookId={book.id}
+        message={
+          error instanceof Error
+            ? error.message
+            : "This chapter could not be loaded from the source."
+        }
+      />
+    );
   }
 
   return (
@@ -56,7 +69,15 @@ export default async function ReadChapterPage({
       chapters={resolved.chapters}
       chapterId={chapterId}
       currentPage={userBook.currentPage}
-      suggestedMode={defaultReadingMode(resolved.manga.originalLanguage)}
+      suggestedMode={
+        book.category === "MANGA"
+          ? defaultReadingMode(
+              resolved.manga.originalLanguage,
+              session.user.defaultReadingMode,
+            )
+          : "ltr"
+      }
+      progressMode={book.category === "MANGA" ? "chapter" : "page"}
     />
   );
 }

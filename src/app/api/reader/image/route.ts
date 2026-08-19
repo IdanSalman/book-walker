@@ -1,4 +1,7 @@
 import { auth } from "@/lib/auth";
+import { isMangaDexImageHost } from "@/lib/cover-url";
+import { MD_UUID_RE } from "@/lib/mangadex-api";
+import { fetchMangaDexReaderImage } from "@/lib/reader/mangadex-page-image";
 import {
   imageRefererForHost,
   isAllowedReaderImageHost,
@@ -64,6 +67,28 @@ export async function GET(request: Request) {
     return new Response("Blocked host", { status: 400 });
   }
 
+  if (isMangaDexImageHost(target.hostname)) {
+    const params = new URL(request.url).searchParams;
+    const chapterId = params.get("mdc");
+    const dataSaver = params.get("ds") === "1";
+    const image = await fetchMangaDexReaderImage(target, {
+      chapterId: chapterId && MD_UUID_RE.test(chapterId) ? chapterId : null,
+      dataSaver,
+    });
+    if (!image) {
+      return new Response("Image unavailable", {
+        status: 502,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    return new Response(Buffer.from(image.bytes), {
+      headers: {
+        "Content-Type": image.contentType,
+        "Cache-Control": "private, max-age=300",
+      },
+    });
+  }
+
   const referer = await imageRefererForHost(target.hostname);
   const pageReferer = requestedReferer
     ? `${requestedReferer.origin}/`
@@ -78,12 +103,18 @@ export async function GET(request: Request) {
   });
 
   if (!upstream.ok) {
-    return new Response("Image unavailable", { status: upstream.status });
+    return new Response("Image unavailable", {
+      status: upstream.status,
+      headers: { "Cache-Control": "no-store" },
+    });
   }
 
   const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
   if (!contentType.startsWith("image/")) {
-    return new Response("Unexpected content", { status: 502 });
+    return new Response("Unexpected content", {
+      status: 502,
+      headers: { "Cache-Control": "no-store" },
+    });
   }
 
   return new Response(upstream.body, {

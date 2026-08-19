@@ -1,9 +1,49 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
+import { promisify } from "node:util";
+
+import { isCloudflareChallenge, isToonilyHost } from "@/lib/reader/html";
+import { readerFetchRevalidate } from "@/lib/reader/fetch-mode";
+
+const execFileAsync = promisify(execFile);
+
+const SOURCE_TIMEOUT_MS = 20_000;
 
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+
+/** Mihon Toonily.kt: addCookie("toonily-mature" to "1") so adult listings are not filtered. */
+function extraSourceHeaders(url: string): Record<string, string> {
+  try {
+    if (isToonilyHost(new URL(url).hostname)) {
+      return { Cookie: "toonily-mature=1" };
+    }
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+function mergeSourceHeaders(
+  url: string,
+  headers: Record<string, string>,
+): Record<string, string> {
+  return { ...extraSourceHeaders(url), ...headers };
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.name === "TimeoutError" ||
+    error.name === "AbortError" ||
+    /timed out/i.test(error.message)
+  );
+}
 
 /**
  * Undici/Next fetch strips the Referer header. Manganato CDNs require it,
@@ -23,7 +63,7 @@ export async function fetchKeepingReferer(
   const method = init?.method ?? "GET";
   const headers: Record<string, string> = {
     "Accept-Encoding": "identity",
-    ...init?.headers,
+    ...mergeSourceHeaders(url, init?.headers ?? {}),
   };
   if (init?.body && headers["Content-Length"] == null && headers["content-length"] == null) {
     headers["Content-Length"] = Buffer.byteLength(init.body).toString();
@@ -72,12 +112,91 @@ export async function fetchKeepingReferer(
       },
     );
     req.on("error", reject);
-    req.setTimeout(25_000, () => {
+    req.setTimeout(SOURCE_TIMEOUT_MS, () => {
       req.destroy(new Error("Source request timed out"));
     });
     if (init?.body) req.write(init.body);
     req.end();
   });
+}
+
+function looksLikeTextResponse(res: Response): boolean {
+  const contentType = res.headers.get("content-type") ?? "";
+  return /html|json|text|xml|javascript/i.test(contentType) || !contentType;
+}
+
+async function withChallengeCheck(
+  res: Response,
+): Promise<{ res: Response; challenged: boolean }> {
+  if (!looksLikeTextResponse(res)) return { res, challenged: false };
+  const text = await res.text();
+  return {
+    res: new Response(text, { status: res.status, headers: res.headers }),
+    challenged: isCloudflareChallenge(text),
+  };
+}
+
+/** Last-resort GET: curl's TLS fingerprint often passes Cloudflare when Node does not. */
+async function fetchViaCurl(
+  url: string,
+  headers: Record<string, string>,
+): Promise<Response | null> {
+  try {
+    if (new URL(url).protocol !== "https:") return null;
+  } catch {
+    return null;
+  }
+
+  const dir = await mkdtemp(join(tmpdir(), "srcfetch-"));
+  const bodyPath = join(dir, "body");
+  const headerPath = join(dir, "headers");
+  const bin = process.platform === "win32" ? "curl.exe" : "curl";
+  const args = [
+    "-sS",
+    "-L",
+    "--max-time",
+    String(Math.ceil(SOURCE_TIMEOUT_MS / 1000)),
+    "-D",
+    headerPath,
+    "-o",
+    bodyPath,
+    "-w",
+    "%{http_code}",
+  ];
+  for (const [key, value] of Object.entries(headers)) {
+    if (!value) continue;
+    args.push("-H", `${key}: ${value}`);
+  }
+  args.push(url);
+
+  try {
+    const { stdout } = await execFileAsync(bin, args, {
+      timeout: SOURCE_TIMEOUT_MS + 5_000,
+      windowsHide: true,
+      maxBuffer: 1024 * 1024,
+    });
+    const status = Number.parseInt(String(stdout).trim(), 10);
+    const body = await readFile(bodyPath);
+    const rawHeaders = await readFile(headerPath, "utf8");
+    const headerInit = new Headers();
+    const blocks = rawHeaders.trim().split(/\r?\n\r?\n/);
+    const last = blocks.at(-1) ?? "";
+    for (const line of last.split(/\r?\n/)) {
+      const idx = line.indexOf(":");
+      if (idx <= 0) continue;
+      const name = line.slice(0, idx).trim();
+      if (/^transfer-encoding$/i.test(name)) continue;
+      headerInit.append(name, line.slice(idx + 1).trim());
+    }
+    return new Response(body, {
+      status: Number.isFinite(status) ? status : 502,
+      headers: headerInit,
+    });
+  } catch {
+    return null;
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
 }
 
 export async function sourceFetch(
@@ -92,27 +211,55 @@ export async function sourceFetch(
     throwOnError?: boolean;
   },
 ): Promise<Response> {
-  const revalidate = init?.revalidate ?? 300;
-  const headers = {
+  const revalidate = readerFetchRevalidate(init?.revalidate);
+  const headers = mergeSourceHeaders(url, {
     Accept: init?.accept ?? "text/html,application/json;q=0.9,*/*;q=0.8",
     "User-Agent": BROWSER_UA,
     ...(init?.referer ? { Referer: init.referer } : {}),
     ...init?.headers,
+  });
+  const method = init?.method ?? "GET";
+  const nodeInit = {
+    method,
+    headers,
+    body: init?.body,
   };
-  const res = init?.referer
-    ? await fetchKeepingReferer(url, {
-        method: init?.method ?? "GET",
-        headers,
-        body: init?.body,
-      })
-    : await fetch(url, {
-        method: init?.method ?? "GET",
-        headers,
-        body: init?.body,
-        ...(revalidate === false
-          ? { cache: "no-store" as const }
-          : { next: { revalidate } }),
-      });
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...nodeInit,
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+      ...(revalidate === false
+        ? { cache: "no-store" as const }
+        : { next: { revalidate } }),
+    });
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      throw new Error("Source request timed out");
+    }
+    throw error;
+  }
+  let challenged: boolean;
+  ({ res, challenged } = await withChallengeCheck(res));
+
+  if (challenged) {
+    ({ res, challenged } = await withChallengeCheck(
+      await fetchKeepingReferer(url, nodeInit),
+    ));
+  }
+
+  if (
+    (challenged || (!res.ok && (res.status === 403 || res.status === 404))) &&
+    method === "GET" &&
+    !init?.body
+  ) {
+    const viaCurl = await fetchViaCurl(url, headers);
+    if (viaCurl && (viaCurl.ok || challenged)) {
+      ({ res, challenged } = await withChallengeCheck(viaCurl));
+    }
+  }
+
   if (!res.ok && init?.throwOnError !== false) {
     throw new Error(`Source HTTP ${res.status}`);
   }

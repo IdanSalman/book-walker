@@ -9,7 +9,10 @@ import {
   getDashboardLibraryStats,
 } from "@/lib/library-stats";
 import { hideAdultUserBookFilter } from "@/lib/adult-content";
-import { hideReadUserBookFilter } from "@/lib/hide-read-titles";
+import {
+  getCaughtUpBookIds,
+  hideReadUserBookFilter,
+} from "@/lib/hide-read-titles";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
@@ -17,6 +20,9 @@ export default async function DashboardPage() {
   const session = await requireUser();
   const hideAdult = session.user.hideAdultContent ?? true;
   const hideRead = session.user.hideReadTitles ?? false;
+  const caughtUpBookIds = hideRead
+    ? await getCaughtUpBookIds(session.user.id)
+    : [];
 
   const [stats, recent] = await Promise.all([
     getDashboardLibraryStats(session.user.id, hideAdult),
@@ -24,7 +30,7 @@ export default async function DashboardPage() {
       where: {
         userId: session.user.id,
         ...hideAdultUserBookFilter(hideAdult),
-        ...hideReadUserBookFilter(hideRead),
+        ...hideReadUserBookFilter(hideRead, caughtUpBookIds),
       },
       orderBy: { updatedAt: "desc" },
       take: 8,

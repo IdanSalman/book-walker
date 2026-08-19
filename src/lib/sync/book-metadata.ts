@@ -1,4 +1,4 @@
-import type { PublicationStatus } from "@prisma/client";
+import type { BookCategory, PublicationStatus } from "@prisma/client";
 
 import { mangadexFetch } from "@/lib/mangadex-api";
 import {
@@ -243,6 +243,7 @@ export async function fetchMangaDexByUrl(sourceUrl: string): Promise<SyncResult>
 
 export async function syncBookMetadata(book: {
   title: string;
+  category?: BookCategory;
   externalId: string | null;
   sourceUrl: string | null;
   sourceName?: string | null;
@@ -250,6 +251,12 @@ export async function syncBookMetadata(book: {
 }): Promise<SyncResult> {
   const fromSource = await syncFromCurrentSource(book);
   if (fromSource) return fromSource;
+
+  if (book.category === "BOOK") {
+    throw new Error(
+      "No Open Library / Internet Archive scan is configured for this book.",
+    );
+  }
 
   if (book.externalId?.startsWith("anilist:")) {
     const id = Number(book.externalId.slice("anilist:".length));

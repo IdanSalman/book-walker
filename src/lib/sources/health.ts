@@ -44,7 +44,21 @@ export async function checkSourceConnection(source: {
       headers: {
         Accept: "*/*",
         "User-Agent": builtIn?.kind === "SCRAPER" ? BROWSER_UA : USER_AGENT,
-        ...(builtIn?.healthBody ? { "Content-Type": "application/json" } : {}),
+        ...(source.key === "toonily"
+          ? {
+              Cookie: "toonily-mature=1",
+              "X-Requested-With": "XMLHttpRequest",
+            }
+          : {}),
+        ...(builtIn?.healthBody
+          ? {
+              "Content-Type":
+                builtIn.healthMethod === "POST" &&
+                !builtIn.healthBody.trimStart().startsWith("{")
+                  ? "application/x-www-form-urlencoded; charset=UTF-8"
+                  : "application/json",
+            }
+          : {}),
       },
       body: builtIn?.healthBody,
       cache: "no-store",

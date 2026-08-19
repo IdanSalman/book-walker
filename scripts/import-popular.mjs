@@ -342,7 +342,7 @@ function dedupeCandidates(books) {
   const seen = new Set();
   const out = [];
   for (const book of books) {
-    const key = book.externalKey ?? book.title.toLowerCase();
+    const key = `${book.category}:${book.externalKey ?? book.title.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(book);
@@ -372,21 +372,26 @@ async function main() {
   const merged = dedupeCandidates([...manga, ...novels, ...books]);
   console.log(`After dedupe: ${merged.length} unique candidates`);
 
-  const existing = await prisma.book.findMany({ select: { title: true } });
-  const existingTitles = new Set(existing.map((b) => b.title.toLowerCase()));
-  console.log(`Already in catalog: ${existingTitles.size} titles`);
+  const existing = await prisma.book.findMany({
+    select: { title: true, category: true },
+  });
+  const existingKeys = new Set(
+    existing.map((b) => `${b.category}:${b.title.toLowerCase()}`),
+  );
+  console.log(`Already in catalog: ${existing.length} titles`);
 
   const toInsert = [];
   const categoryCounts = { MANGA: 0, LIGHT_NOVEL: 0, BOOK: 0 };
 
   for (const book of merged) {
     if (toInsert.length >= totalLimit) break;
-    if (existingTitles.has(book.title.toLowerCase())) continue;
+    const key = `${book.category}:${book.title.toLowerCase()}`;
+    if (existingKeys.has(key)) continue;
     if (categoryCounts[book.category] >= TARGET_SPLIT[book.category]) continue;
 
     toInsert.push(book);
     categoryCounts[book.category] += 1;
-    existingTitles.add(book.title.toLowerCase());
+    existingKeys.add(key);
   }
 
   console.log(`\nTo insert: ${toInsert.length}`);

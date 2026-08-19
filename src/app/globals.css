@@ -18,6 +18,29 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+html.reader-active {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(82 82 91 / 0.45) transparent;
+}
+
+html.reader-active::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+html.reader-active::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html.reader-active::-webkit-scrollbar-thumb {
+  background-color: rgb(82 82 91 / 0.45);
+  border-radius: 999px;
+}
+
+html.reader-active::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(113 113 122 / 0.7);
+}
+
 * {
   border-color: #27272a;
 }

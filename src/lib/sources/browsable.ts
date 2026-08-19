@@ -2,7 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { READING_ENGINES, sourceEngine } from "@/lib/reader/resolve";
 import type { CatalogCandidate } from "@/lib/reader/types";
 import type { SourceBrowseItem } from "@/lib/sources/browse";
-import { catalogBooksByTitles, catalogBooksByUrls } from "@/lib/sources/import-title";
+import { catalogCategoryForSource } from "@/lib/sources/catalog-kind";
+import { ensureBuiltInSources } from "@/lib/sources/ensure";
+import {
+  catalogBooksByTitles,
+  catalogBooksByUrls,
+  isSameCatalogListing,
+} from "@/lib/sources/import-title";
 
 export type BrowsableSource = {
   key: string;
@@ -10,6 +16,7 @@ export type BrowsableSource = {
 };
 
 export async function getBrowsableSources(): Promise<BrowsableSource[]> {
+  await ensureBuiltInSources();
   const rows = await prisma.fetchSource.findMany({
     where: { enabled: true },
     orderBy: [{ priority: "desc" }, { name: "asc" }],
@@ -63,10 +70,17 @@ export async function resolveBrowsableSource(
 export async function annotateBrowseItems(
   items: CatalogCandidate[],
   userId: string,
+  sourceKey?: string,
 ): Promise<SourceBrowseItem[]> {
+  const category = sourceKey
+    ? catalogCategoryForSource({ key: sourceKey })
+    : undefined;
   const [catalog, byTitle] = await Promise.all([
     catalogBooksByUrls(items.map((item) => item.url)),
-    catalogBooksByTitles(items.map((item) => item.title)),
+    catalogBooksByTitles(
+      items.map((item) => item.title),
+      category,
+    ),
   ]);
   const titleMap = new Map(
     byTitle.map((book) => [book.title.trim().toLowerCase(), book]),
@@ -82,17 +96,26 @@ export async function annotateBrowseItems(
       ? []
       : await prisma.userBook.findMany({
           where: { userId, bookId: { in: bookIds } },
-          select: { bookId: true, status: true },
+          select: { bookId: true, currentPage: true, book: { select: { totalPages: true } } },
         });
   const inLibrary = new Set(library.map((entry) => entry.bookId));
-  const completed = new Set(
+  const caughtUp = new Set(
     library
-      .filter((entry) => entry.status === "COMPLETED")
+      .filter(
+        (entry) =>
+          entry.book.totalPages > 0 &&
+          entry.currentPage >= entry.book.totalPages,
+      )
       .map((entry) => entry.bookId),
   );
 
   return items.map((item) => {
-    const book = catalog.get(item.url);
+    const book =
+      catalog.get(item.url) ??
+      byTitle.find((row) =>
+        isSameCatalogListing({ title: item.title, url: item.url }, row),
+      ) ??
+      null;
     const existingTitle = book
       ? null
       : (titleMap.get(item.title.trim().toLowerCase()) ?? null);
@@ -102,7 +125,7 @@ export async function annotateBrowseItems(
       inCatalog: Boolean(book),
       bookId: book?.id ?? null,
       inLibrary: bookId ? inLibrary.has(bookId) : false,
-      completed: bookId ? completed.has(bookId) : false,
+      caughtUp: bookId ? caughtUp.has(bookId) : false,
       existingTitle,
     };
   });

@@ -7,9 +7,12 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { coverRefererForHost } from "@/lib/cover-url";
+import { isFreshReaderFetch } from "@/lib/reader/fetch-mode";
 import { asuraEngine } from "@/lib/reader/engines/asura";
 import { comickEngine, isComickSource } from "@/lib/reader/engines/comick";
 import { mangaDexEngine } from "@/lib/reader/engines/mangadex";
+import { openLibraryEngine } from "@/lib/reader/engines/openlibrary";
+import { localPdfEngine } from "@/lib/reader/engines/localpdf";
 import {
   createSiteEngine,
   isSiteEngineKey,
@@ -24,6 +27,7 @@ import {
 } from "@/lib/reader/source-engine";
 import { decodeChapterId } from "@/lib/reader/source-id";
 import type { ReaderPage, ResolvedManga } from "@/lib/reader/types";
+import { ensureBuiltInSources } from "@/lib/sources/ensure";
 
 export const READING_ENGINES: ReaderSourceEngine[] = [
   mangaDexEngine,
@@ -32,7 +36,19 @@ export const READING_ENGINES: ReaderSourceEngine[] = [
   comickEngine,
 ];
 
+/** Page-image book scans and uploaded PDFs. Kept out of READING_ENGINES so manga import/cover repair stay comic-only. */
+export const BOOK_READING_ENGINES: ReaderSourceEngine[] = [
+  openLibraryEngine,
+  localPdfEngine,
+];
+
+const ALL_READING_ENGINES: ReaderSourceEngine[] = [
+  ...READING_ENGINES,
+  ...BOOK_READING_ENGINES,
+];
+
 const COMMON_IMAGE_HOSTS = [
+  "archive.org",
   "wp.com",
   "wordpress.com",
   "googleusercontent.com",
@@ -58,6 +74,8 @@ const COMMON_IMAGE_HOSTS = [
   "waitst.com",
   "mkklcdnv6temp.com",
   "mkklcdnv6temp.xyz",
+  "toonily.com",
+  "tnlycdn.com",
 ];
 
 const ACTIVE_SOURCE_WHERE: Prisma.FetchSourceWhereInput = {
@@ -66,7 +84,7 @@ const ACTIVE_SOURCE_WHERE: Prisma.FetchSourceWhereInput = {
 };
 
 export function readingEngine(key: string): ReaderSourceEngine | undefined {
-  return READING_ENGINES.find((engine) => engine.key === key);
+  return ALL_READING_ENGINES.find((engine) => engine.key === key);
 }
 
 export function isReadingEngine(key: string): boolean {
@@ -78,6 +96,8 @@ export async function sourceEngine(
 ): Promise<ReaderSourceEngine | undefined> {
   const builtin = readingEngine(key);
   if (builtin) return builtin;
+
+  if (key === "toonily") await ensureBuiltInSources();
 
   const row = await prisma.fetchSource.findUnique({
     where: { key },
@@ -96,12 +116,13 @@ export async function sourceEngine(
   if (row.kind === "METADATA") return undefined;
   if (!row.supportsSearch && !row.supportsReading) return undefined;
   if (isComickSource(row)) return comickEngine;
-  if (!isSiteEngineKey(row.key)) return undefined;
+  if (row.kind !== "SCRAPER" || !isSiteEngineKey(row.key)) return undefined;
 
   return createSiteEngine(row);
 }
 
 async function enabledReadingEngines(): Promise<ReaderSourceEngine[]> {
+  await ensureBuiltInSources();
   const rows = await prisma.fetchSource.findMany({
     where: ACTIVE_SOURCE_WHERE,
     orderBy: [{ priority: "desc" }, { name: "asc" }],
@@ -122,6 +143,9 @@ async function enabledReadingEngines(): Promise<ReaderSourceEngine[]> {
   for (const row of rows) {
     const builtin = readingEngine(row.key);
     if (builtin) {
+      if (BOOK_READING_ENGINES.some((engine) => engine.key === builtin.key)) {
+        continue;
+      }
       engines.push(builtin);
       continue;
     }
@@ -131,7 +155,7 @@ async function enabledReadingEngines(): Promise<ReaderSourceEngine[]> {
       }
       continue;
     }
-    if (row.kind === "METADATA") continue;
+    if (row.kind !== "SCRAPER" || !isSiteEngineKey(row.key)) continue;
     engines.push(createSiteEngine(row));
   }
 
@@ -157,6 +181,16 @@ function orderedEngines(
 export async function currentReadingEngine(
   book: ReaderBookRef,
 ): Promise<ReaderSourceEngine | undefined> {
+  if (book.category === "BOOK") {
+    return (
+      BOOK_READING_ENGINES.find(
+        (engine) =>
+          engineMatchesName(engine, book.sourceName) ||
+          engineMatchesUrl(engine, book.sourceUrl),
+      ) ?? openLibraryEngine
+    );
+  }
+
   const engines = await enabledReadingEngines();
   return engines.find(
     (engine) =>
@@ -165,9 +199,35 @@ export async function currentReadingEngine(
   );
 }
 
-export async function getMangaWithChapters(
+const RESOLVE_TTL_MS = 2 * 60 * 1000;
+const mangaResolveCache = new Map<
+  string,
+  { expires: number; promise: Promise<ResolvedManga> }
+>();
+
+function mangaResolveCacheKey(book: ReaderBookRef): string {
+  return `${book.id}:${book.sourceUrl ?? ""}:${book.sourceName ?? ""}`;
+}
+
+export function invalidateMangaResolveCache(bookId?: string) {
+  if (!bookId) {
+    mangaResolveCache.clear();
+    return;
+  }
+  const prefix = `${bookId}:`;
+  for (const key of mangaResolveCache.keys()) {
+    if (key.startsWith(prefix)) mangaResolveCache.delete(key);
+  }
+}
+
+async function resolveMangaFromEngines(
   book: ReaderBookRef,
 ): Promise<ResolvedManga> {
+  if (book.category === "BOOK") {
+    const engine = await currentReadingEngine(book);
+    return (engine ?? openLibraryEngine).resolveManga(book);
+  }
+
   const engines = orderedEngines(await enabledReadingEngines(), book);
   const errors: string[] = [];
 
@@ -188,6 +248,28 @@ export async function getMangaWithChapters(
       ? errors.join(" ")
       : "No readable chapters were found on the enabled Mihon sources.",
   );
+}
+
+export async function getMangaWithChapters(
+  book: ReaderBookRef,
+): Promise<ResolvedManga> {
+  const key = mangaResolveCacheKey(book);
+  if (isFreshReaderFetch()) {
+    invalidateMangaResolveCache(book.id);
+  } else {
+    const hit = mangaResolveCache.get(key);
+    if (hit && hit.expires > Date.now()) return hit.promise;
+  }
+
+  const promise = resolveMangaFromEngines(book).catch((error) => {
+    mangaResolveCache.delete(key);
+    throw error;
+  });
+  mangaResolveCache.set(key, {
+    expires: Date.now() + RESOLVE_TTL_MS,
+    promise,
+  });
+  return promise;
 }
 
 export async function getChapterPages(
@@ -224,7 +306,7 @@ export async function isAllowedReaderImageHost(
 ): Promise<boolean> {
   const host = hostname.toLowerCase();
   if (
-    READING_ENGINES.some((engine) =>
+    ALL_READING_ENGINES.some((engine) =>
       hostAllowed(
         host,
         engine.imageHosts.filter((item) => item !== "*"),
@@ -253,6 +335,7 @@ export async function isAllowedReaderImageHost(
 
   if (!refererHostname) return false;
   const referer = refererHostname.toLowerCase();
+  if (hostAllowed(host, [referer])) return true;
   return sources.some((source) => {
     if (!isSiteEngineKey(source.key)) return false;
     try {
@@ -267,7 +350,7 @@ export async function imageRefererForHost(
   hostname: string,
 ): Promise<string | undefined> {
   const host = hostname.toLowerCase();
-  const builtin = READING_ENGINES.find((engine) =>
+  const builtin = ALL_READING_ENGINES.find((engine) =>
     hostAllowed(
       host,
       engine.imageHosts.filter((item) => item !== "*"),

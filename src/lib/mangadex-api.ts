@@ -1,3 +1,5 @@
+import { readerFetchRevalidate } from "@/lib/reader/fetch-mode";
+
 const MANGADEX_API = "https://api.mangadex.org";
 const USER_AGENT =
   "BookWalker/0.1 (personal library reader; Mihon-compatible MangaDex source)";
@@ -17,7 +19,8 @@ export async function mangadexFetch(
   init?: MangaDexInit,
   attempt = 0,
 ): Promise<Response> {
-  const { revalidate, headers, ...rest } = init ?? {};
+  const { revalidate: requestedRevalidate, headers, ...rest } = init ?? {};
+  const revalidate = readerFetchRevalidate(requestedRevalidate);
 
   const res = await fetch(`${MANGADEX_API}${path}`, {
     ...rest,
@@ -28,7 +31,7 @@ export async function mangadexFetch(
     },
     ...(revalidate === false
       ? { cache: "no-store" as const }
-      : { next: { revalidate: revalidate ?? 300 } }),
+      : { next: { revalidate } }),
   });
 
   if (res.status === 429) {

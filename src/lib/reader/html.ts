@@ -90,7 +90,13 @@ export function imageFromTag(tag: string, baseUrl: string): string | null {
   for (const candidate of candidates) {
     const url = absUrl(baseUrl, candidate);
     if (url && !isJunkImageUrl(url)) {
-      return url;
+      try {
+        return isToonilyHost(new URL(url).hostname)
+          ? toonilyHdCoverUrl(url)
+          : url;
+      } catch {
+        return url;
+      }
     }
   }
   return cssBackgroundUrl(tag, baseUrl);
@@ -128,9 +134,14 @@ export function pathOf(url: string, baseUrl: string): string {
 }
 
 export function isCloudflareChallenge(html: string): boolean {
-  return (
-    /just a moment/i.test(html) && /cf-|cloudflare/i.test(html)
-  ) || /cf-browser-verification|challenge-platform/i.test(html);
+  if (/<title[^>]*>\s*just a moment/i.test(html)) return true;
+  if (
+    /just a moment/i.test(html) &&
+    /cf-chl|cf-browser-verification|challenge-platform\/h\//i.test(html)
+  ) {
+    return true;
+  }
+  return /cf-browser-verification|challenge-error-text/i.test(html);
 }
 
 export function assertNotBlocked(html: string, sourceName: string): void {
@@ -146,12 +157,39 @@ const SERIES_DIRS = new Set([
   "manhwa",
   "manhua",
   "series",
+  "serie",
   "comic",
   "comics",
   "webtoon",
   "webtoons",
   "title",
 ]);
+
+export function isToonilyHost(host: string): boolean {
+  const normalized = host.replace(/^www\./, "").toLowerCase();
+  return (
+    normalized === "toonily.com" ||
+    normalized.endsWith(".toonily.com") ||
+    normalized.endsWith(".tnlycdn.com")
+  );
+}
+
+/** Mihon Toonily.kt rewrites legacy /webtoon/ URLs to /serie/. */
+export function canonicalizeToonilyPath(pathname: string): string {
+  return pathname.replace(/\/webtoon(\/|$)/gi, "/serie$1");
+}
+
+/** Mihon Toonily.kt hdCoverInterceptor: drop WordPress size suffixes on the static CDN. */
+export function toonilyHdCoverUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.toLowerCase().startsWith("static.")) return url;
+    parsed.pathname = parsed.pathname.replace(/-\d+x\d+(\.\w+)$/i, "$1");
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
 
 export function seriesPathParts(pathname: string): string[] {
   return pathname.split("/").filter(Boolean);
@@ -171,8 +209,9 @@ export function looksLikeSeriesPath(pathname: string): boolean {
 export function looksLikeChapterPath(pathname: string): boolean {
   const parts = seriesPathParts(pathname);
   const dirIndex = mangaDirIndex(parts);
-  if (dirIndex < 0) return false;
-  return parts.length >= dirIndex + 3;
+  if (dirIndex >= 0 && parts.length >= dirIndex + 3) return true;
+  const last = parts.at(-1) ?? "";
+  return /(?:^|-)chapter-?\d/i.test(last) || /^ch-?\d/i.test(last);
 }
 
 export function detectMangaDirectory(html: string, baseUrl: string): string {
@@ -214,6 +253,7 @@ export function isKeyoappHost(host: string): boolean {
 export function detectSiteParser(html: string, host?: string): SiteParser {
   if (host && isMangaBoxHost(host)) return "mangabox";
   if (host && isKeyoappHost(host)) return "keyoapp";
+  if (host && isToonilyHost(host)) return "madara";
   if (
     /list-comic-item-wrap|list-truyen-item-wrap|manga-list\/hot-manga|2xstorage\.com|mkklcdn/i.test(
       html,

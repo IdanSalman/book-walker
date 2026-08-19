@@ -3,7 +3,7 @@ import { shouldHideAdultBook } from "@/lib/adult-content";
 import { prisma } from "@/lib/prisma";
 import { canReadBook } from "@/lib/reader/access";
 import { getChapterPages, refererForSourceKey } from "@/lib/reader/resolve";
-import { decodeChapterId, isChapterId } from "@/lib/reader/source-id";
+import { decodeChapterId, decodeChapterIdParam, isChapterId } from "@/lib/reader/source-id";
 
 export async function GET(
   request: Request,
@@ -19,7 +19,7 @@ export async function GET(
   }
 
   const { id, chapterId: rawChapterId } = await params;
-  const chapterId = decodeURIComponent(rawChapterId);
+  const chapterId = decodeChapterIdParam(rawChapterId);
   if (!isChapterId(chapterId)) {
     return Response.json({ error: "Invalid chapter" }, { status: 400 });
   }
@@ -52,14 +52,33 @@ export async function GET(
   try {
     const pages = await getChapterPages(chapterId, dataSaver);
     const ref = decodeChapterId(chapterId);
-    const referer = ref ? await refererForSourceKey(ref.sourceKey) : undefined;
+    const sourceReferer = ref
+      ? await refererForSourceKey(ref.sourceKey)
+      : undefined;
     return Response.json({
-      pages: pages.map((page) => ({
-        index: page.index,
-        url: referer
-          ? `/api/reader/image?u=${encodeURIComponent(page.url)}&r=${encodeURIComponent(referer)}`
-          : `/api/reader/image?u=${encodeURIComponent(page.url)}`,
-      })),
+      pages: pages.map((page) => {
+        if (page.render === "pdf") {
+          return {
+            index: page.index,
+            url: page.url,
+            render: "pdf" as const,
+          };
+        }
+        if (page.url.startsWith("/")) {
+          return { index: page.index, url: page.url };
+        }
+        const referer = page.referer || sourceReferer;
+        const params = new URLSearchParams({ u: page.url });
+        if (referer) params.set("r", referer);
+        if (ref?.sourceKey === "mangadex") {
+          params.set("mdc", ref.payload);
+          if (dataSaver) params.set("ds", "1");
+        }
+        return {
+          index: page.index,
+          url: `/api/reader/image?${params.toString()}`,
+        };
+      }),
     });
   } catch (error) {
     const message =

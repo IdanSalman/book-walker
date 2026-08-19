@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { AdultContentSetting } from "@/components/adult-content-setting";
+import { DefaultReadingModeSetting } from "@/components/default-reading-mode-setting";
 import { HideReadTitlesSetting } from "@/components/hide-read-titles-setting";
 import { Badge } from "@/components/ui/badge";
 import { prisma } from "@/lib/prisma";
@@ -81,6 +82,7 @@ export default async function AccountPage() {
         </h2>
         <AdultContentSetting hideAdultContent={hideAdultContent} />
         <HideReadTitlesSetting hideReadTitles={hideReadTitles} />
+        <DefaultReadingModeSetting defaultReadingMode={user.defaultReadingMode} />
       </section>
 
       <section className="space-y-3">

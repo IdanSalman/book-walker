@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { BookOpen, ChevronDown } from "lucide-react";
 
 import { OpenOnSourceLink } from "@/components/open-on-source-link";
+import { RefreshReadableButton } from "@/components/refresh-readable-button";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -25,12 +26,14 @@ export function ChapterList({
   currentPage,
   sourceName,
   sourceUrl,
+  variant = "chapters",
 }: {
   bookId: string;
   chapters: ReaderChapter[];
   currentPage: number;
   sourceName?: string | null;
   sourceUrl?: string | null;
+  variant?: "chapters" | "pages";
 }) {
   const [newestFirst, setNewestFirst] = useState(true);
 
@@ -47,9 +50,16 @@ export function ChapterList({
 
   if (chapters.length === 0) {
     return (
-      <p className="text-sm text-zinc-400">
-        No readable chapters were found on the enabled sources for this title.
-      </p>
+      <div className="space-y-3">
+        <p className="text-sm text-zinc-400">
+          No readable chapters were found on the enabled sources for this title.
+        </p>
+        <RefreshReadableButton
+          bookId={bookId}
+          label={variant === "pages" ? "Look up a public scan" : "Reload chapters"}
+          retryLabel="Try again"
+        />
+      </div>
     );
   }
 
@@ -58,15 +68,16 @@ export function ChapterList({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
-            Chapters
+            {variant === "pages" ? "Read" : "Chapters"}
           </h2>
           <p className="mt-1 text-sm text-zinc-400">
-            {chapters.length.toLocaleString()} chapter
-            {chapters.length === 1 ? "" : "s"}
-            {sourceName ? ` · ${sourceName}` : ""}
-            {missingCount > 0
-              ? ` · ${missingCount.toLocaleString()} missing chapter${missingCount === 1 ? "" : "s"}`
-              : ""}
+            {variant === "pages"
+              ? `${chapters[0]?.pageCount.toLocaleString() ?? chapters.length.toLocaleString()} scanned pages${sourceName ? ` · ${sourceName}` : ""}`
+              : `${chapters.length.toLocaleString()} chapter${chapters.length === 1 ? "" : "s"}${sourceName ? ` · ${sourceName}` : ""}${
+                  missingCount > 0
+                    ? ` · ${missingCount.toLocaleString()} missing chapter${missingCount === 1 ? "" : "s"}`
+                    : ""
+                }`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -82,20 +93,27 @@ export function ChapterList({
           {sourceUrl && (
             <OpenOnSourceLink href={sourceUrl} sourceName={sourceName} />
           )}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setNewestFirst((value) => !value)}
-          >
-            <ChevronDown
-              className={cn(
-                "h-4 w-4 transition",
-                newestFirst ? "rotate-0" : "rotate-180",
-              )}
-            />
-            {newestFirst ? "Newest" : "Oldest"}
-          </Button>
+          <RefreshReadableButton
+            bookId={bookId}
+            label={variant === "pages" ? "Refresh scan" : "Refresh chapters"}
+            retryLabel="Try again"
+          />
+          {variant !== "pages" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setNewestFirst((value) => !value)}
+            >
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 transition",
+                  newestFirst ? "rotate-0" : "rotate-180",
+                )}
+              />
+              {newestFirst ? "Newest" : "Oldest"}
+            </Button>
+          )}
         </div>
       </div>
 

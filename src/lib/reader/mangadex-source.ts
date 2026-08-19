@@ -292,13 +292,15 @@ export function isChapterId(value: string): boolean {
 export async function getPageList(
   chapterId: string,
   dataSaver = false,
+  options?: { forcePort443?: boolean },
 ): Promise<ReaderPage[]> {
   if (!isChapterId(chapterId)) {
     throw new Error("Invalid chapter");
   }
 
+  const forcePort443 = options?.forcePort443 === true;
   const res = await mangadexFetch(
-    `/at-home/server/${chapterId}?forcePort443=false`,
+    `/at-home/server/${chapterId}?forcePort443=${forcePort443}`,
     { revalidate: false },
   );
   const json = (await res.json()) as AtHomeResponse;

@@ -5,9 +5,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { categoryLabel } from "@/lib/categories";
 import { prisma } from "@/lib/prisma";
 import { isPngCoverUrl, scanPngCoverStatuses } from "@/lib/cover-validation";
+import { LOCAL_PDF_NAME, pdfPageCount } from "@/lib/reader/pdf-pages";
+import { deleteBookPdf, saveBookPdf } from "@/lib/reader/pdf-store";
 import { requireAdmin } from "@/lib/session";
+import { enrichCustomBook, PLACEHOLDER_SUMMARY } from "@/lib/sources/custom-book";
 import {
   repairBookCover,
   repairMissingCovers,
@@ -31,8 +35,14 @@ function parseOptionalString(value: FormDataEntryValue | null): string | null {
 
 const bookSchema = z.object({
   title: z.string().min(1, "Title is required").max(200),
-  summary: z.string().min(1, "Summary is required").max(5000),
-  coverUrl: z.string().url("Cover must be a valid URL"),
+  summary: z.string().max(5000),
+  coverUrl: z
+    .string()
+    .max(2000)
+    .refine(
+      (value) => value === "" || URL.canParse(value),
+      "Cover must be a valid URL",
+    ),
   totalPages: z.coerce.number().int().min(1, "Total pages must be at least 1"),
   category: z.nativeEnum(BookCategory),
   artist: z.string().max(200).nullable(),
@@ -64,10 +74,12 @@ function revalidateCatalog(bookId?: string) {
 }
 
 function formDataToObject(formData: FormData) {
+  const cover = formData.get("coverUrl");
+  const summary = formData.get("summary");
   return {
     title: formData.get("title"),
-    summary: formData.get("summary"),
-    coverUrl: formData.get("coverUrl"),
+    summary: typeof summary === "string" ? summary.trim() : "",
+    coverUrl: typeof cover === "string" ? cover.trim() : "",
     totalPages: formData.get("totalPages"),
     category: formData.get("category"),
     artist: parseOptionalString(formData.get("artist")),
@@ -85,6 +97,12 @@ function formDataToObject(formData: FormData) {
   };
 }
 
+async function pdfBytesFromForm(formData: FormData): Promise<Uint8Array | null> {
+  const file = formData.get("pdf");
+  if (!file || typeof file === "string" || file.size === 0) return null;
+  return new Uint8Array(await file.arrayBuffer());
+}
+
 export async function createBook(
   _prev: ActionState,
   formData: FormData,
@@ -96,8 +114,76 @@ export async function createBook(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  await prisma.book.create({ data: parsed.data });
-  revalidateCatalog();
+  let pdfBytes: Uint8Array | null;
+  try {
+    pdfBytes = await pdfBytesFromForm(formData);
+  } catch {
+    return { error: "Could not read the PDF file" };
+  }
+
+  let pdfPages: number | null = null;
+  if (pdfBytes) {
+    try {
+      pdfPages = await pdfPageCount(pdfBytes);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Invalid PDF",
+      };
+    }
+  }
+
+  const duplicate = await prisma.book.findFirst({
+    where: {
+      title: { equals: parsed.data.title, mode: "insensitive" },
+      category: pdfBytes ? "BOOK" : parsed.data.category,
+    },
+    select: { id: true },
+  });
+  if (duplicate) {
+    return {
+      error: `A ${categoryLabel(pdfBytes ? "BOOK" : parsed.data.category)} titled "${parsed.data.title}" is already in the catalog.`,
+    };
+  }
+
+  const data = {
+    ...parsed.data,
+    summary: parsed.data.summary || PLACEHOLDER_SUMMARY,
+    coverUrl: parsed.data.coverUrl,
+    ...(pdfBytes
+      ? {
+          category: "BOOK" as const,
+          totalPages: pdfPages ?? parsed.data.totalPages,
+          publicationStatus: "COMPLETED" as const,
+          sourceName: LOCAL_PDF_NAME,
+          sourceUrl: null,
+        }
+      : {}),
+  };
+
+  const created = await prisma.book.create({
+    data,
+    select: { id: true },
+  });
+
+  try {
+    if (pdfBytes) {
+      await saveBookPdf(created.id, pdfBytes);
+      await prisma.book.update({
+        where: { id: created.id },
+        data: { externalId: `pdf:${created.id}` },
+      });
+    }
+  } catch (error) {
+    await deleteBookPdf(created.id);
+    await prisma.book.delete({ where: { id: created.id } }).catch(() => {});
+    return {
+      error: error instanceof Error ? error.message : "Failed to store PDF",
+    };
+  }
+
+  await enrichCustomBook(created.id);
+
+  revalidateCatalog(created.id);
   redirect("/admin/books");
 }
 
@@ -113,10 +199,57 @@ export async function updateBook(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
+  const pdfBytes = await pdfBytesFromForm(formData).catch(() => null);
+  let pdfPages: number | null = null;
+  if (pdfBytes) {
+    try {
+      pdfPages = await pdfPageCount(pdfBytes);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Invalid PDF",
+      };
+    }
+  }
+
+  const duplicate = await prisma.book.findFirst({
+    where: {
+      id: { not: bookId },
+      title: { equals: parsed.data.title, mode: "insensitive" },
+      category: pdfBytes ? "BOOK" : parsed.data.category,
+    },
+    select: { id: true },
+  });
+  if (duplicate) {
+    return {
+      error: `A ${categoryLabel(pdfBytes ? "BOOK" : parsed.data.category)} titled "${parsed.data.title}" is already in the catalog.`,
+    };
+  }
+
   await prisma.book.update({
     where: { id: bookId },
-    data: parsed.data,
+    data: {
+      ...parsed.data,
+      summary: parsed.data.summary || PLACEHOLDER_SUMMARY,
+      ...(pdfBytes
+        ? {
+            category: "BOOK" as const,
+            totalPages: pdfPages ?? parsed.data.totalPages,
+            publicationStatus: "COMPLETED" as const,
+            sourceName: LOCAL_PDF_NAME,
+            sourceUrl: null,
+            externalId: `pdf:${bookId}`,
+          }
+        : {}),
+    },
   });
+
+  if (pdfBytes) {
+    await saveBookPdf(bookId, pdfBytes);
+  }
+
+  if (!parsed.data.coverUrl || pdfBytes) {
+    await enrichCustomBook(bookId);
+  }
 
   revalidateCatalog(bookId);
   return { success: true };
@@ -126,6 +259,7 @@ export async function deleteBook(bookId: string): Promise<ActionState> {
   await requireAdmin();
 
   await prisma.book.delete({ where: { id: bookId } });
+  await deleteBookPdf(bookId);
   revalidateCatalog(bookId);
   redirect("/admin/books");
 }
@@ -242,6 +376,8 @@ export async function repairBookCoverAction(bookId: string): Promise<ActionState
       coverCorrupted: true,
       sourceName: true,
       sourceUrl: true,
+      category: true,
+      author: true,
     },
   });
   if (!book) return { error: "Book not found" };
@@ -308,6 +444,7 @@ export async function syncBookMetadataAction(
   try {
     const result = await syncBookMetadata({
       title: book.title,
+      category: book.category,
       externalId: book.externalId,
       sourceUrl: book.sourceUrl,
       sourceName: book.sourceName,

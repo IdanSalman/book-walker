@@ -1,7 +1,9 @@
 import { ChapterList } from "@/components/chapter-list";
+import { RefreshReadableButton } from "@/components/refresh-readable-button";
 import { getMangaWithChapters } from "@/lib/reader/resolve";
 import type { ReaderChapter } from "@/lib/reader/types";
 import { applyResolvedListing } from "@/lib/sources/repair-cover";
+import type { BookCategory } from "@prisma/client";
 
 export async function ReadableChapterSection({
   book,
@@ -15,6 +17,8 @@ export async function ReadableChapterSection({
     sourceUrl: string | null;
     sourceName: string | null;
     externalId: string | null;
+    author: string | null;
+    category: BookCategory;
   };
   currentPage: number;
 }) {
@@ -43,8 +47,22 @@ export async function ReadableChapterSection({
           Read
         </h2>
         <p className="mt-2 text-sm text-zinc-400">
-          {errorMessage ?? "Chapters could not be loaded."}
+          {errorMessage ??
+            (book.category === "BOOK"
+              ? "A public page scan could not be loaded."
+              : "Chapters could not be loaded.")}
         </p>
+        <div className="mt-4">
+          <RefreshReadableButton
+            bookId={book.id}
+            label={
+              book.category === "BOOK"
+                ? "Look up a public scan"
+                : "Reload chapters"
+            }
+            retryLabel="Try again"
+          />
+        </div>
       </div>
     );
   }
@@ -56,6 +74,7 @@ export async function ReadableChapterSection({
       currentPage={currentPage}
       sourceName={sourceName}
       sourceUrl={sourceUrl}
+      variant={book.category === "BOOK" ? "pages" : "chapters"}
     />
   );
 }

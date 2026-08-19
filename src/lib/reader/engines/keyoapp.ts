@@ -176,11 +176,14 @@ export function parseKeyoappDetails(
     ),
     year: null,
     genres: [
-      ...html.matchAll(/href=["'][^"']*genre[^"']*["'][^>]*>([^<]+)</gi),
-    ]
-      .map((match) => stripTags(match[1]))
-      .filter((genre) => genre.length > 1 && genre.length < 40)
-      .slice(0, 16),
+      ...new Set(
+        [
+          ...html.matchAll(/href=["'][^"']*genre[^"']*["'][^>]*>([^<]+)</gi),
+        ]
+          .map((match) => stripTags(match[1]))
+          .filter((genre) => genre.length > 1 && genre.length < 40),
+      ),
+    ].slice(0, 16),
     isAdult,
     author: null,
     artist: null,

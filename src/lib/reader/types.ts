@@ -4,6 +4,14 @@
  */
 
 export type ReadingMode = "rtl" | "ltr" | "webtoon";
+export type ReadingModePreference = "auto" | ReadingMode;
+
+export const READING_MODE_PREFERENCES: ReadingModePreference[] = [
+  "auto",
+  "ltr",
+  "rtl",
+  "webtoon",
+];
 
 export type ReaderManga = {
   id: string;
@@ -26,6 +34,10 @@ export type ReaderChapter = {
 export type ReaderPage = {
   index: number;
   url: string;
+  /** Overrides the source-level image Referer when pages come from another host. */
+  referer?: string;
+  /** Draw this page from a PDF document instead of a raster image. */
+  render?: "pdf";
 };
 
 export type ResolvedManga = {
@@ -52,9 +64,28 @@ export type CatalogCandidate = {
   url: string;
 };
 
+export function parseReadingMode(
+  value: string | null | undefined,
+): ReadingMode | null {
+  if (value === "rtl" || value === "ltr" || value === "webtoon") return value;
+  return null;
+}
+
+export function parseReadingModePreference(
+  value: string | null | undefined,
+): ReadingModePreference {
+  if (value === "auto" || value === "rtl" || value === "ltr" || value === "webtoon") {
+    return value;
+  }
+  return "auto";
+}
+
 export function defaultReadingMode(
   originalLanguage: string | null,
+  userDefault?: string | null,
 ): ReadingMode {
+  const preference = parseReadingMode(userDefault);
+  if (preference) return preference;
   const lang = originalLanguage?.toLowerCase() ?? "";
   if (lang === "ko" || lang.startsWith("zh")) return "webtoon";
   return "rtl";
@@ -69,4 +100,9 @@ export function readingModeLabel(mode: ReadingMode): string {
     case "webtoon":
       return "Webtoon";
   }
+}
+
+export function readingModePreferenceLabel(mode: ReadingModePreference): string {
+  if (mode === "auto") return "Automatic";
+  return readingModeLabel(mode);
 }

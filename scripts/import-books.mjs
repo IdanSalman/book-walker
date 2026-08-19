@@ -174,10 +174,13 @@ async function main() {
 
   console.log(`\nFetched ${all.length} candidates, ${unique.length} unique`);
 
-  const existing = await prisma.book.findMany({ select: { title: true } });
+  const existing = await prisma.book.findMany({
+    where: { category: "BOOK" },
+    select: { title: true },
+  });
   const existingTitles = new Set(existing.map((b) => b.title.toLowerCase()));
-  const bookCount = await prisma.book.count({ where: { category: "BOOK" } });
-  console.log(`Catalog has ${bookCount} books (${existingTitles.size} total titles)`);
+  const bookCount = existingTitles.size;
+  console.log(`Catalog has ${bookCount} BOOK titles`);
 
   const toInsert = [];
   for (const book of unique) {

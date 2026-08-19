@@ -25,8 +25,8 @@ export function HideReadTitlesSetting({
           <h2 className="font-medium text-zinc-100">Already read titles</h2>
           <p className="text-sm text-zinc-400">
             {optimisticHide
-              ? "Completed titles are hidden from your library, the store, and live source browse. Filter your library to Completed to see them again."
-              : "Completed titles stay visible in your library and in the store."}
+              ? "Titles you’re caught up on — no new chapters left — are hidden from your library, the store, and live source browse. They reappear when a new chapter is listed."
+              : "Caught-up titles stay visible in your library and in the store."}
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">

@@ -10,6 +10,7 @@ import { StorePagination } from "@/components/store-pagination";
 import { StoreSourceNav } from "@/components/store-source-nav";
 import { CATEGORIES } from "@/lib/categories";
 import { parseStoreContentFilter } from "@/lib/adult-content";
+import { getCaughtUpBookIds } from "@/lib/hide-read-titles";
 import {
   PUBLICATION_FILTER_OPTIONS,
   PUBLICATION_STATUS_LABELS,
@@ -61,6 +62,9 @@ export default async function BrowseStorePage({
   const sort = parseStoreSort(sortParam);
   const hideAdult = session.user.hideAdultContent ?? true;
   const hideRead = session.user.hideReadTitles ?? false;
+  const caughtUpBookIds = hideRead
+    ? await getCaughtUpBookIds(session.user.id)
+    : [];
   const contentFilter = parseStoreContentFilter(contentParam, hideAdult);
   const contentUrl =
     contentFilter === "all" ? undefined : contentFilter;
@@ -98,7 +102,7 @@ export default async function BrowseStorePage({
     genre: validGenre,
     hideAdult,
     hideRead,
-    userId: session.user.id,
+    caughtUpBookIds,
     content: contentUrl,
     publication: showPublicationFilters ? publicationParam : undefined,
     q: query,
@@ -268,7 +272,7 @@ export default async function BrowseStorePage({
           )}
           {hideRead && (
             <p className="mt-2 text-sm text-zinc-500">
-              Completed titles are hidden.{" "}
+              Titles with no new chapters are hidden.{" "}
               <Link href="/account" className="text-violet-400 hover:text-violet-300">
                 Change in account
               </Link>

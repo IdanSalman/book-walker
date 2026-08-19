@@ -94,9 +94,10 @@ export default async function SourceBrowsePage({
         ? result.items.filter((item) => !item.isAdult)
         : result.items,
       session.user.id,
+      source.key,
     );
     if (hideRead) {
-      items = items.filter((item) => !item.completed);
+      items = items.filter((item) => !item.caughtUp);
     }
     hasMore = result.hasMore;
     total = result.total;

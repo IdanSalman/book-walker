@@ -18,8 +18,9 @@ import {
   libraryPageCount,
   parseLibraryPage,
 } from "@/lib/library-pagination";
+import { getCaughtUpBookIds } from "@/lib/hide-read-titles";
 import { prisma } from "@/lib/prisma";
-import { isReadableComic } from "@/lib/reader/access";
+import { isReadableInApp } from "@/lib/reader/access";
 
 type LibraryResultsProps = {
   userId: string;
@@ -54,6 +55,7 @@ export async function LibraryResults({
   publicationLabel,
   queryLabel,
 }: LibraryResultsProps) {
+  const caughtUpBookIds = hideRead ? await getCaughtUpBookIds(userId) : [];
   const where = buildLibraryWhere(userId, {
     collection: filterParams.collection,
     category: filterParams.category,
@@ -62,6 +64,7 @@ export async function LibraryResults({
     q: filterParams.q,
     hideAdult,
     hideRead,
+    caughtUpBookIds,
   });
 
   const requestedPage = parseLibraryPage(pageParam);
@@ -90,11 +93,11 @@ export async function LibraryResults({
           {librarySize === 0
             ? "Your library is empty."
             : hideAdult && hideRead && totalCount === 0
-              ? "Adult and completed titles are hidden."
+              ? "Adult titles and titles with no new chapters are hidden."
               : hideAdult && totalCount === 0
                 ? "Adult titles are hidden."
                 : hideRead && totalCount === 0
-                  ? "Completed titles are hidden."
+                  ? "Titles with no new chapters are hidden."
                   : queryLabel
                     ? `No titles match “${queryLabel}”.`
                     : "No titles match these filters."}
@@ -163,7 +166,7 @@ export async function LibraryResults({
                   {link.category.name}
                 </Badge>
               ))}
-              {isReadableComic(ub.book.category) && (
+              {isReadableInApp(ub.book.category) && (
                 <Link
                   href={`/read/${ub.bookId}`}
                   prefetch={false}

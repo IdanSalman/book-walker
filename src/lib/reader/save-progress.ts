@@ -9,14 +9,21 @@ export type SaveReaderProgressInput = {
   chapterCount: number;
   completedChapter: boolean;
   progressPage: number;
+  pageBased?: boolean;
 };
 
 export async function saveReaderProgress(
   userId: string,
   input: SaveReaderProgressInput,
 ): Promise<{ error?: string }> {
-  const { bookId, chapterIndex, chapterCount, completedChapter, progressPage } =
-    input;
+  const {
+    bookId,
+    chapterIndex,
+    chapterCount,
+    completedChapter,
+    progressPage,
+    pageBased = false,
+  } = input;
 
   if (
     !Number.isInteger(chapterIndex) ||
@@ -45,7 +52,7 @@ export async function saveReaderProgress(
     return { error: "This title is not in your library" };
   }
 
-  const currentPage = completedChapter
+  const currentPage = pageBased || completedChapter
     ? Math.max(userBook.currentPage, progressPage)
     : userBook.currentPage;
   let status = userBook.status;
@@ -54,13 +61,16 @@ export async function saveReaderProgress(
     status = "READING";
   }
 
-  if (
-    completedChapter &&
-    chapterIndex >= chapterCount &&
-    !isOngoingPublication(book.publicationStatus)
-  ) {
+  const finished = pageBased
+    ? completedChapter || progressPage >= chapterCount
+    : completedChapter && chapterIndex >= chapterCount;
+
+  if (finished && !isOngoingPublication(book.publicationStatus)) {
     status = "COMPLETED";
-  } else if (status === "COMPLETED" && chapterIndex < chapterCount) {
+  } else if (
+    status === "COMPLETED" &&
+    (pageBased ? progressPage < chapterCount : chapterIndex < chapterCount)
+  ) {
     status = "READING";
   } else if (
     (completedChapter || currentPage > 0) &&

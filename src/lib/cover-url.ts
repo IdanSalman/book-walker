@@ -24,6 +24,11 @@ const COVER_REFERERS: { suffix: string; referer: string }[] = [
   { suffix: "meowing.org", referer: "https://mistscans.com/" },
   { suffix: "mistscans.com", referer: "https://mistscans.com/" },
   { suffix: "keyoapp.com", referer: "https://mistscans.com/" },
+  { suffix: "toonily.com", referer: "https://toonily.com/" },
+  { suffix: "tnlycdn.com", referer: "https://toonily.com/" },
+  { suffix: "openlibrary.org", referer: "https://openlibrary.org/" },
+  { suffix: "archive.org", referer: "https://archive.org/" },
+  { suffix: "books.google.com", referer: "https://books.google.com/" },
 ];
 
 export function isMangaDexImageHost(hostname: string): boolean {

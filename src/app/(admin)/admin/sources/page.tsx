@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
+import type { FetchSource } from "@prisma/client";
 
 import {
   AdminAddAllBuiltInSourcesButton,
@@ -17,15 +18,24 @@ import {
   sourceCatalogCount,
   sourceNameMatches,
 } from "@/lib/sources/catalog-stats";
+import { ensureBuiltInSources } from "@/lib/sources/ensure";
 import {
   BUILT_IN_SOURCES,
   canImportFromSource,
+  SOURCE_FAMILY_BLURBS,
+  SOURCE_FAMILY_LABELS,
+  SOURCE_FAMILY_ORDER,
+  SOURCE_FAMILY_STYLES,
   SOURCE_HEALTH_LABELS,
   SOURCE_HEALTH_STYLES,
   SOURCE_KIND_LABELS,
+  sourceFamily,
+  type SourceFamily,
 } from "@/lib/sources/registry";
 
 export default async function AdminSourcesPage() {
+  await ensureBuiltInSources();
+
   const [sources, catalogNames, unassigned] = await Promise.all([
     prisma.fetchSource.findMany({
       orderBy: [{ priority: "desc" }, { name: "asc" }],
@@ -42,6 +52,11 @@ export default async function AdminSourcesPage() {
     (row) => !sources.some((source) => sourceNameMatches(row.name, source)),
   );
 
+  const grouped = SOURCE_FAMILY_ORDER.map((family) => ({
+    family,
+    sources: sources.filter((source) => sourceFamily(source) === family),
+  })).filter((group) => group.sources.length > 0);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -52,10 +67,9 @@ export default async function AdminSourcesPage() {
               ? "No websites configured yet."
               : `${sources.length} website${sources.length === 1 ? "" : "s"} — ${
                   sources.filter((source) => source.enabled).length
-                } enabled.`}{" "}
-            Browse Mihon’s Keiyoushi catalog to add sites, or register one
-            manually. MangaDex, Asura Scans, and Weeb Central can import titles
-            and power in-app reading.
+                } enabled, grouped by catalog type.`}{" "}
+            Manga sites power chapter reading. Book libraries supply public scans
+            or texts. Metadata catalogs only refresh listing details.
           </p>
         </div>
         <div className="flex flex-wrap items-start gap-3">
@@ -83,105 +97,15 @@ export default async function AdminSourcesPage() {
           </div>
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {sources.map((source) => {
-            const bookCount = sourceCatalogCount(catalogNames, source);
-
-            return (
-              <article
-                key={source.id}
-                className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/30 p-5"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="truncate text-lg font-semibold text-zinc-50">
-                        {source.name}
-                      </h2>
-                      <Badge>{SOURCE_KIND_LABELS[source.kind]}</Badge>
-                      <Badge className={SOURCE_HEALTH_STYLES[source.health]}>
-                        {SOURCE_HEALTH_LABELS[source.health]}
-                        {source.health !== "UNKNOWN" && source.lastLatencyMs
-                          ? ` · ${source.lastLatencyMs} ms`
-                          : ""}
-                      </Badge>
-                    </div>
-                    <a
-                      href={source.baseUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 inline-flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300"
-                    >
-                      {source.baseUrl.replace(/^https?:\/\//, "")}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </div>
-                  <AdminSourceEnabledToggle
-                    sourceId={source.id}
-                    enabled={source.enabled}
-                    compact
-                  />
-                </div>
-
-                <div className="flex flex-wrap gap-1.5">
-                  {canImportFromSource(source) && (
-                    <Badge className="border-violet-900/50 bg-violet-950/50 text-violet-300">
-                      Importer
-                    </Badge>
-                  )}
-                  {source.supportsSearch && <Badge>Search</Badge>}
-                  {source.supportsMetadata && <Badge>Metadata</Badge>}
-                  {source.supportsReading && <Badge>Reading</Badge>}
-                  {source.isAdultSource && (
-                    <Badge className="border-red-900/50 bg-red-950/50 text-red-300">
-                      Adult
-                    </Badge>
-                  )}
-                  <Badge className="border-zinc-800 bg-zinc-900 text-zinc-400">
-                    {source.language}
-                  </Badge>
-                </div>
-
-                {source.lastError && (
-                  <p className="text-xs text-amber-400">{source.lastError}</p>
-                )}
-
-                <dl className="grid grid-cols-2 gap-3 border-t border-zinc-800 pt-3 text-sm">
-                  <div>
-                    <dt className="text-xs text-zinc-500">In catalog</dt>
-                    <dd className="font-medium text-zinc-100">
-                      {bookCount.toLocaleString()} book
-                      {bookCount === 1 ? "" : "s"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-zinc-500">Last tested</dt>
-                    <dd className="font-medium text-zinc-100">
-                      {source.lastCheckedAt
-                        ? new Date(source.lastCheckedAt).toLocaleString()
-                        : "Never"}
-                    </dd>
-                  </div>
-                </dl>
-
-                <div className="flex flex-wrap gap-3 pt-1">
-                  <Link href={`/admin/sources/${source.id}`}>
-                    <Button variant="secondary" size="sm">
-                      Manage
-                    </Button>
-                  </Link>
-                  {bookCount > 0 && (
-                    <Link
-                      href={adminBooksHref({ source: source.name })}
-                      className="self-center text-sm text-violet-400 hover:text-violet-300"
-                    >
-                      View in catalog
-                    </Link>
-                  )}
-                </div>
-              </article>
-            );
-          })}
+        <div className="space-y-10">
+          {grouped.map((group) => (
+            <SourceFamilySection
+              key={group.family}
+              family={group.family}
+              sources={group.sources}
+              catalogNames={catalogNames}
+            />
+          ))}
         </div>
       )}
 
@@ -256,5 +180,151 @@ export default async function AdminSourcesPage() {
         </p>
       )}
     </div>
+  );
+}
+
+function SourceFamilySection({
+  family,
+  sources,
+  catalogNames,
+}: {
+  family: SourceFamily;
+  sources: FetchSource[];
+  catalogNames: { name: string; count: number }[];
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-zinc-800 pb-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold text-zinc-50">
+              {SOURCE_FAMILY_LABELS[family]}
+            </h2>
+            <Badge className={SOURCE_FAMILY_STYLES[family]}>
+              {sources.length} source{sources.length === 1 ? "" : "s"}
+            </Badge>
+          </div>
+          <p className="mt-1 max-w-3xl text-sm text-zinc-400">
+            {SOURCE_FAMILY_BLURBS[family]}
+          </p>
+        </div>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {sources.map((source) => (
+          <SourceCard
+            key={source.id}
+            source={source}
+            bookCount={sourceCatalogCount(catalogNames, source)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SourceCard({
+  source,
+  bookCount,
+}: {
+  source: FetchSource;
+  bookCount: number;
+}) {
+  return (
+    <article className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/30 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-lg font-semibold text-zinc-50">
+              {source.name}
+            </h3>
+            <Badge className={SOURCE_FAMILY_STYLES[sourceFamily(source)]}>
+              {SOURCE_FAMILY_LABELS[sourceFamily(source)]}
+            </Badge>
+            <Badge>{SOURCE_KIND_LABELS[source.kind]}</Badge>
+            <Badge className={SOURCE_HEALTH_STYLES[source.health]}>
+              {SOURCE_HEALTH_LABELS[source.health]}
+              {source.health !== "UNKNOWN" && source.lastLatencyMs
+                ? ` · ${source.lastLatencyMs} ms`
+                : ""}
+            </Badge>
+          </div>
+          <a
+            href={source.baseUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1 inline-flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300"
+          >
+            {source.baseUrl.replace(/^https?:\/\//, "")}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+        <AdminSourceEnabledToggle
+          sourceId={source.id}
+          enabled={source.enabled}
+          compact
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {canImportFromSource(source) && (
+          <Badge className="border-violet-900/50 bg-violet-950/50 text-violet-300">
+            Importer
+          </Badge>
+        )}
+        {source.supportsSearch && <Badge>Search</Badge>}
+        {source.supportsMetadata && <Badge>Metadata</Badge>}
+        {source.supportsReading && <Badge>Reading</Badge>}
+        {source.isAdultSource && (
+          <Badge className="border-red-900/50 bg-red-950/50 text-red-300">
+            Adult
+          </Badge>
+        )}
+        <Badge className="border-zinc-800 bg-zinc-900 text-zinc-400">
+          {source.language}
+        </Badge>
+      </div>
+
+      {source.notes && (
+        <p className="text-xs leading-relaxed text-zinc-500">{source.notes}</p>
+      )}
+
+      {source.lastError && (
+        <p className="text-xs text-amber-400">{source.lastError}</p>
+      )}
+
+      <dl className="grid grid-cols-2 gap-3 border-t border-zinc-800 pt-3 text-sm">
+        <div>
+          <dt className="text-xs text-zinc-500">In catalog</dt>
+          <dd className="font-medium text-zinc-100">
+            {bookCount.toLocaleString()} book
+            {bookCount === 1 ? "" : "s"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-zinc-500">Last tested</dt>
+          <dd className="font-medium text-zinc-100">
+            {source.lastCheckedAt
+              ? new Date(source.lastCheckedAt).toLocaleString()
+              : "Never"}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="flex flex-wrap gap-3 pt-1">
+        <Link href={`/admin/sources/${source.id}`}>
+          <Button variant="secondary" size="sm">
+            Manage
+          </Button>
+        </Link>
+        {bookCount > 0 && (
+          <Link
+            href={adminBooksHref({ source: source.name })}
+            className="self-center text-sm text-violet-400 hover:text-violet-300"
+          >
+            View in catalog
+          </Link>
+        )}
+      </div>
+    </article>
   );
 }

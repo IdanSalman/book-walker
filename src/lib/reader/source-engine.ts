@@ -1,3 +1,5 @@
+import type { BookCategory } from "@prisma/client";
+
 import type {
   CatalogCandidate,
   ReaderPage,
@@ -14,6 +16,8 @@ export type ReaderBookRef = {
   sourceUrl: string | null;
   externalId: string | null;
   sourceName?: string | null;
+  author?: string | null;
+  category?: BookCategory;
 };
 
 export type ReaderSourceEngine = {

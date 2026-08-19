@@ -16,9 +16,12 @@ import { prisma } from "@/lib/prisma";
 import { sourceCatalogStats } from "@/lib/sources/catalog-stats";
 import {
   canImportFromSource,
+  SOURCE_FAMILY_LABELS,
+  SOURCE_FAMILY_STYLES,
   SOURCE_HEALTH_LABELS,
   SOURCE_HEALTH_STYLES,
   SOURCE_KIND_LABELS,
+  sourceFamily,
 } from "@/lib/sources/registry";
 
 export default async function AdminSourcePage({
@@ -45,6 +48,9 @@ export default async function AdminSourcePage({
           </Link>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <h1 className="text-3xl font-bold text-zinc-50">{source.name}</h1>
+            <Badge className={SOURCE_FAMILY_STYLES[sourceFamily(source)]}>
+              {SOURCE_FAMILY_LABELS[sourceFamily(source)]}
+            </Badge>
             <Badge>{SOURCE_KIND_LABELS[source.kind]}</Badge>
             <Badge className={SOURCE_HEALTH_STYLES[source.health]}>
               {SOURCE_HEALTH_LABELS[source.health]}

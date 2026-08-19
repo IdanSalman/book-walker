@@ -40,6 +40,12 @@ enum SourceKind {
   METADATA
 }
 
+enum SourceFamily {
+  COMIC
+  BOOK
+  METADATA
+}
+
 enum SourceHealth {
   UNKNOWN
   ONLINE
@@ -56,6 +62,7 @@ model User {
   role                Role       @default(USER)
   hideAdultContent    Boolean    @default(true)
   hideReadTitles      Boolean    @default(false)
+  defaultReadingMode  String     @default("auto")
   onboardingComplete  Boolean    @default(false)
   accounts            Account[]
   sessions            Session[]
@@ -133,6 +140,7 @@ model FetchSource {
   name             String
   baseUrl          String
   kind             SourceKind   @default(SCRAPER)
+  family           SourceFamily @default(COMIC)
   language         String       @default("en")
   enabled          Boolean      @default(true)
   priority         Int          @default(0)

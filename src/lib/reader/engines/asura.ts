@@ -7,11 +7,16 @@ import type { PublicationStatus } from "@prisma/client";
 
 import {
   parseChapterNumber,
+  sourceFetch,
   sourceJson,
   sourceText,
   uniqueUrls,
 } from "@/lib/reader/source-fetch";
-import { encodeChapterId, titlesMatch } from "@/lib/reader/source-id";
+import {
+  encodeChapterId,
+  mangaSlugKey,
+  titlesMatch,
+} from "@/lib/reader/source-id";
 import type { ReaderSourceEngine } from "@/lib/reader/source-engine";
 import type {
   CatalogCandidate,
@@ -236,16 +241,47 @@ async function asuraCategories(): Promise<SourceCategory[]> {
   }));
 }
 
+function seriesFromPayload(json: unknown): AsuraSeries | null {
+  if (!json || typeof json !== "object") return null;
+  const record = json as { series?: AsuraSeries; data?: AsuraSeries };
+  const series = record.series ?? record.data;
+  return series?.slug ? series : null;
+}
+
 async function fetchSeries(slug: string): Promise<AsuraSeries> {
-  const clean = slug.replace(/-[a-z0-9]{8}$/i, "");
-  const json = await sourceJson<{ series?: AsuraSeries }>(
-    `${API}/series/${encodeURIComponent(clean)}`,
-    { referer: `${SITE}/`, revalidate: 300 },
-  );
-  if (!json.series?.slug) {
-    throw new Error("Asura Scans title not found");
+  const raw = slug.trim().replace(/^\/+|\/+$/g, "");
+  const clean = mangaSlugKey(raw);
+  const ids = [...new Set([raw, clean].filter(Boolean))];
+
+  for (const id of ids) {
+    const res = await sourceFetch(
+      `${API}/series/${encodeURIComponent(id)}`,
+      {
+        referer: `${SITE}/`,
+        accept: "application/json",
+        revalidate: 120,
+        throwOnError: false,
+      },
+    );
+    if (!res.ok) continue;
+    try {
+      const series = seriesFromPayload(await res.json());
+      if (series) return series;
+    } catch {
+      /* try the next id */
+    }
   }
-  return json.series;
+
+  const queries = [...new Set([raw, clean, clean.replace(/-/g, " ")])];
+  for (const query of queries) {
+    const hits = await searchSeries(query);
+    const match =
+      hits.find((hit) => ids.includes(hit.slug) || mangaSlugKey(hit.slug) === clean) ??
+      hits.find((hit) => titlesMatch(hit.title, query));
+    if (match) return match;
+  }
+
+  throw new Error("Asura Scans title not found");
 }
 
 async function fetchChapters(series: AsuraSeries): Promise<ReaderChapter[]> {
@@ -255,6 +291,10 @@ async function fetchChapters(series: AsuraSeries): Promise<ReaderChapter[]> {
   });
   const publicSlug =
     publicPath(series).split("/").filter(Boolean).at(-1) ?? series.slug;
+
+  const fromAstro = chaptersFromAstro(html, publicSlug);
+  if (fromAstro.length > 0) return fromAstro;
+
   const nums = [
     ...new Set(
       [...html.matchAll(/\/comics\/[^/"']+\/chapter\/(\d+(?:\.\d+)?)/g)].map(
@@ -262,22 +302,84 @@ async function fetchChapters(series: AsuraSeries): Promise<ReaderChapter[]> {
       ),
     ),
   ];
+  return nums.map((num) => chapterFromNumber(publicSlug, num)).sort(
+    (a, b) => a.chapterNumber - b.chapterNumber,
+  );
+}
 
-  return nums
-    .map((num) => {
-      const chapterNumber = parseChapterNumber(num);
-      return {
-        id: encodeChapterId("asurascans", `${publicSlug}:${num}`),
-        name: chapterNumber === 0 ? "Prologue" : `Ch.${num}`,
-        chapterNumber,
-        volume: null,
-        title: null,
-        scanlationGroup: "Asura Scans",
-        publishedAt: null,
-        pageCount: 0,
-      } satisfies ReaderChapter;
-    })
-    .sort((a, b) => a.chapterNumber - b.chapterNumber);
+function unwrapAstro(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    if (value.length === 0 || value.length === 1) return null;
+    if (value.length === 2 && isAstroPrimitiveTag(value[0])) {
+      return unwrapAstro(value[1]);
+    }
+    return value.map(unwrapAstro);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        unwrapAstro(item),
+      ]),
+    );
+  }
+  return value;
+}
+
+function isAstroPrimitiveTag(value: unknown): boolean {
+  return typeof value === "number" || typeof value === "string";
+}
+
+function chaptersFromAstro(html: string, publicSlug: string): ReaderChapter[] {
+  const decoded = html.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+  for (const match of decoded.matchAll(/\bprops="(\{[^"]*\})"/g)) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(match[1]);
+    } catch {
+      continue;
+    }
+    const unwrapped = unwrapAstro(parsed) as {
+      chapters?: {
+        number?: number | string;
+        is_premium?: boolean;
+        isLocked?: boolean;
+        published_at?: string | null;
+      }[];
+    };
+    const rows = unwrapped?.chapters;
+    if (!Array.isArray(rows) || rows.length === 0) continue;
+    return rows
+      .filter((row) => !row.isLocked)
+      .map((row) =>
+        chapterFromNumber(
+          publicSlug,
+          String(row.number ?? ""),
+          row.published_at ?? null,
+        ),
+      )
+      .filter((chapter) => chapter.chapterNumber >= 0)
+      .sort((a, b) => a.chapterNumber - b.chapterNumber);
+  }
+  return [];
+}
+
+function chapterFromNumber(
+  publicSlug: string,
+  num: string,
+  publishedAt: string | null = null,
+): ReaderChapter {
+  const chapterNumber = parseChapterNumber(num);
+  return {
+    id: encodeChapterId("asurascans", `${publicSlug}:${num}`),
+    name: chapterNumber === 0 ? "Prologue" : `Ch.${num}`,
+    chapterNumber,
+    volume: null,
+    title: null,
+    scanlationGroup: "Asura Scans",
+    publishedAt,
+    pageCount: 0,
+  };
 }
 
 export const asuraEngine: ReaderSourceEngine = {
@@ -343,15 +445,30 @@ export const asuraEngine: ReaderSourceEngine = {
     if (sep <= 0) throw new Error("Invalid chapter");
     const slug = payload.slice(0, sep);
     const number = payload.slice(sep + 1);
-    const html = await sourceText(`${SITE}/comics/${slug}/chapter/${number}`, {
-      referer: `${SITE}/`,
-      revalidate: false,
-    });
-    const urls = uniqueUrls(
-      [...html.matchAll(
-        /https:\/\/cdn\.asurascans\.com\/asura-images\/chapters\/[^"'\\\s<&]+/g,
-      )].map((match) => match[0].replace(/\\+$/, "")),
-    ).filter((url) => /\.(?:webp|jpe?g|png)(?:\?|$)/i.test(url));
+    const slugs = [...new Set([slug, mangaSlugKey(slug)].filter(Boolean))];
+    let urls: string[] = [];
+    for (const comicSlug of slugs) {
+      const res = await sourceFetch(
+        `${SITE}/comics/${comicSlug}/chapter/${number}`,
+        {
+          referer: `${SITE}/`,
+          revalidate: false,
+          throwOnError: false,
+        },
+      );
+      if (!res.ok) continue;
+      const decoded = (await res.text())
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, "&");
+      urls = uniqueUrls(
+        [
+          ...decoded.matchAll(
+            /https:\/\/cdn\.asurascans\.com\/asura-images\/chapters\/[^"'\s<>]+/g,
+          ),
+        ].map((match) => match[0].replace(/\\+$/, "")),
+      ).filter((url) => /\.(?:webp|jpe?g|png)(?:\?|$)/i.test(url));
+      if (urls.length > 0) break;
+    }
     if (urls.length === 0) {
       throw new Error("Chapter pages are unavailable");
     }

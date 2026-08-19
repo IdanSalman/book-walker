@@ -40,8 +40,9 @@ export function AdminRepairCoverButton({
         {pending ? "Finding cover…" : "Find cover from sources"}
       </Button>
       <p className="text-xs text-zinc-500">
-        Reloads the current image, or looks the title up on other sources and
-        assigns one if this book has no source yet.
+        Reloads the cover from sources that match this title’s type (books stay
+        on Open Library / Google Books, manga on comic sites). A comic source on
+        a book is replaced.
       </p>
       {message && <p className="text-sm text-emerald-400">{message}</p>}
       {error && <p className="text-sm text-red-400">{error}</p>}

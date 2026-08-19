@@ -1,7 +1,8 @@
 "use client";
 
 import type { Book } from "@prisma/client";
-import { Shield } from "lucide-react";
+import { ChevronDown, Shield } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 import { AdminAdultToggle } from "@/components/admin-adult-toggle";
 import { AdminBookForm } from "@/components/admin-book-form";
@@ -18,54 +19,76 @@ export function AdminBookPanel({
   book: Book;
   onUpdated?: () => void;
 }) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    function openIfCatalogHash() {
+      if (window.location.hash !== "#catalog") return;
+      const el = detailsRef.current;
+      if (!el) return;
+      el.open = true;
+    }
+
+    openIfCatalogHash();
+    window.addEventListener("hashchange", openIfCatalogHash);
+    return () => window.removeEventListener("hashchange", openIfCatalogHash);
+  }, []);
+
   return (
-    <section
+    <details
+      ref={detailsRef}
       id="catalog"
-      className="space-y-4 rounded-xl border border-amber-900/40 bg-amber-950/15 p-5"
+      className="group rounded-xl border border-amber-900/40 bg-amber-950/15 p-5"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h2 className="flex items-center gap-2 text-sm font-medium uppercase tracking-wide text-amber-200">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+        <span className="space-y-1">
+          <span className="flex items-center gap-2 text-sm font-medium uppercase tracking-wide text-amber-200">
             <Shield className="h-4 w-4" />
             Catalog settings
-          </h2>
-          <p className="text-xs text-zinc-500">
+          </span>
+          <span className="block text-xs font-normal text-zinc-500">
             Admin only. Changes apply to the store listing for everyone.
-          </p>
-        </div>
-        <DeleteBookButton bookId={book.id} />
-      </div>
+          </span>
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-amber-300/80 transition group-open:rotate-180" />
+      </summary>
 
-      <AdminAdultToggle
-        bookId={book.id}
-        isAdult={book.isAdult}
-        onUpdated={onUpdated}
-      />
-      <AdminCoverCorruptedToggle
-        bookId={book.id}
-        coverCorrupted={book.coverCorrupted}
-        onUpdated={onUpdated}
-      />
-      <AdminRepairCoverButton book={book} onUpdated={onUpdated} />
-      <AdminSyncMetadataButton book={book} onUpdated={onUpdated} />
-      {book.category === "MANGA" && (
-        <AdminMigrateSource
+      <div className="mt-4 space-y-4">
+        <div className="flex justify-end">
+          <DeleteBookButton bookId={book.id} />
+        </div>
+
+        <AdminAdultToggle
           bookId={book.id}
-          bookTitle={book.title}
-          sourceName={book.sourceName}
+          isAdult={book.isAdult}
           onUpdated={onUpdated}
         />
-      )}
+        <AdminCoverCorruptedToggle
+          bookId={book.id}
+          coverCorrupted={book.coverCorrupted}
+          onUpdated={onUpdated}
+        />
+        <AdminRepairCoverButton book={book} onUpdated={onUpdated} />
+        <AdminSyncMetadataButton book={book} onUpdated={onUpdated} />
+        {book.category === "MANGA" && (
+          <AdminMigrateSource
+            bookId={book.id}
+            bookTitle={book.title}
+            sourceName={book.sourceName}
+            onUpdated={onUpdated}
+          />
+        )}
 
-      <details className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-        <summary className="cursor-pointer text-sm font-medium text-zinc-200">
-          Edit catalog fields
-        </summary>
-        <div className="mt-4">
-          <AdminBookForm book={book} embedded />
-        </div>
-      </details>
-    </section>
+        <details className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+          <summary className="cursor-pointer text-sm font-medium text-zinc-200">
+            Edit catalog fields
+          </summary>
+          <div className="mt-4">
+            <AdminBookForm book={book} embedded />
+          </div>
+        </details>
+      </div>
+    </details>
   );
 }
 

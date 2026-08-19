@@ -1,5 +1,8 @@
+import type { BookCategory } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import {
+  BOOK_READING_ENGINES,
   READING_ENGINES,
   sourceEngine,
 } from "@/lib/reader/resolve";
@@ -10,6 +13,7 @@ import {
 } from "@/lib/reader/source-engine";
 import { normalizeTitle, titlesMatch } from "@/lib/reader/source-id";
 import type { CatalogCandidate, ReaderChapter } from "@/lib/reader/types";
+import { catalogCategoryForSource } from "@/lib/sources/catalog-kind";
 import { getBrowsableSources } from "@/lib/sources/browsable";
 
 export type MigrationSource = {
@@ -83,7 +87,7 @@ function currentEngineKeys(book: {
   sourceUrl: string | null;
 }): Set<string> {
   const keys = new Set<string>();
-  for (const engine of READING_ENGINES) {
+  for (const engine of [...READING_ENGINES, ...BOOK_READING_ENGINES]) {
     if (
       engineMatchesName(engine, book.sourceName) ||
       engineMatchesUrl(engine, book.sourceUrl)
@@ -97,11 +101,26 @@ function currentEngineKeys(book: {
 export async function listMigrationSources(book: {
   sourceName: string | null;
   sourceUrl: string | null;
+  category?: BookCategory;
 }): Promise<MigrationSource[]> {
   const sources = await getBrowsableSources();
   const current = currentEngineKeys(book);
-  const others = sources.filter((source) => !current.has(source.key));
-  return uniqueSources(others.length > 0 ? others : sources);
+  const wanted =
+    book.category === "BOOK" ? ("BOOK" as const) : ("MANGA" as const);
+  let pool = sources.filter(
+    (source) => catalogCategoryForSource(source) === wanted,
+  );
+  if (wanted === "BOOK") {
+    const openLibrary = await sourceEngine("openlibrary");
+    if (openLibrary) {
+      pool = uniqueSources([
+        ...pool,
+        { key: openLibrary.key, name: openLibrary.name },
+      ]);
+    }
+  }
+  const others = pool.filter((source) => !current.has(source.key));
+  return uniqueSources(others.length > 0 ? others : pool);
 }
 
 export async function searchMigrationCandidates(opts: {
@@ -128,9 +147,7 @@ export async function searchMigrationCandidates(opts: {
       if (!engine) return [] as MigrationCandidate[];
       try {
         const hits = await engine.search(query);
-        return rankCandidates(query, hits)
-          .filter((hit) => hit.url !== opts.book.sourceUrl)
-          .slice(0, RESULTS_PER_SOURCE)
+        return selectMigrationHits(query, hits, opts.book.sourceUrl)
           .map((hit) => ({
             sourceKey: source.key,
             sourceName: source.name,
@@ -156,6 +173,18 @@ export async function searchMigrationCandidates(opts: {
   });
 }
 
+export function selectMigrationHits(
+  query: string,
+  hits: CatalogCandidate[],
+  currentUrl: string | null,
+  limit = RESULTS_PER_SOURCE,
+): CatalogCandidate[] {
+  return rankCandidates(query, hits)
+    .filter((hit) => hit.url !== currentUrl)
+    .filter((hit) => candidateMatchScore(query, hit.title) > 0)
+    .slice(0, limit);
+}
+
 function rankCandidates(
   query: string,
   hits: CatalogCandidate[],
@@ -175,6 +204,7 @@ export async function loadBookForMigration(bookId: string) {
       title: true,
       sourceName: true,
       sourceUrl: true,
+      category: true,
     },
   });
 }

@@ -24,6 +24,7 @@ export async function POST(request: Request) {
     chapterCount,
     completedChapter,
     progressPage,
+    pageBased,
   } = body as Record<string, unknown>;
 
   if (typeof bookId !== "string" || bookId.length === 0) {
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
     chapterCount: Number(chapterCount),
     completedChapter: completedChapter === true,
     progressPage: Number(progressPage),
+    pageBased: pageBased === true,
   });
 
   if (result.error) {

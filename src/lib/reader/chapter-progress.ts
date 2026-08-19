@@ -13,7 +13,10 @@ function numberedValue(chapterNumber: number): number | null {
   return chapterNumber >= 0 ? chapterNumber : null;
 }
 
-/** Integers strictly between two chapter numbers, e.g. 1 and 3 → 2–2. */
+/**
+ * Integers not covered by either chapter number. A decimal like 3.1 counts as
+ * chapter 3 existing, so 2 → 3.1 has no gap and 1 → 3.1 is only 2.
+ */
 export function missingIntegersBetween(
   a: number,
   b: number,
@@ -21,7 +24,7 @@ export function missingIntegersBetween(
   const lo = Math.min(a, b);
   const hi = Math.max(a, b);
   const start = Math.floor(lo) + 1;
-  const end = Math.ceil(hi) - 1;
+  const end = Math.floor(hi) - 1;
   if (end < start) return null;
   return { start, end };
 }
@@ -41,10 +44,19 @@ export function uniqueSortedChapterNumbers(
   return [...numbers].sort((left, right) => left - right);
 }
 
+/** Integers from chapter 1 up to (but not including) the first numbered chapter. */
+export function leadingChapterGap(chapters: ReaderChapter[]): ChapterGap | null {
+  const numbers = uniqueSortedChapterNumbers(chapters);
+  if (numbers.length === 0) return null;
+  return missingIntegersBetween(0, numbers[0]!);
+}
+
 /** Count of missing integer chapters across the whole list. */
 export function missingChapterCount(chapters: ReaderChapter[]): number {
   const numbers = uniqueSortedChapterNumbers(chapters);
   let missing = 0;
+  const leading = leadingChapterGap(chapters);
+  if (leading) missing += gapSize(leading);
   for (let index = 1; index < numbers.length; index += 1) {
     const gap = missingIntegersBetween(numbers[index - 1]!, numbers[index]!);
     if (gap) missing += gapSize(gap);
@@ -107,9 +119,41 @@ export function latestChapterNumber(chapters: ReaderChapter[]): number {
   return Math.max(1, Math.floor(numbers[numbers.length - 1]!));
 }
 
+function numbersMatch(a: number, b: number): boolean {
+  return a >= 0 && b >= 0 && Math.abs(a - b) < 0.001;
+}
+
+/**
+ * Next/previous chapter for reader navigation, skipping extra copies of the
+ * same chapter number (different scanlation groups).
+ */
+export function adjacentDistinctChapter(
+  chapters: ReaderChapter[],
+  currentIndex: number,
+  direction: -1 | 1,
+): ReaderChapter | null {
+  const current = chapters[currentIndex];
+  if (!current || currentIndex < 0) return null;
+  for (
+    let index = currentIndex + direction;
+    index >= 0 && index < chapters.length;
+    index += direction
+  ) {
+    const candidate = chapters[index]!;
+    if (!numbersMatch(current.chapterNumber, candidate.chapterNumber)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 /** Oldest → newest rows with gap markers between numbered jumps. */
 export function chapterListRows(chapters: ReaderChapter[]): ChapterListRow[] {
   const rows: ChapterListRow[] = [];
+  const leading = leadingChapterGap(chapters);
+  if (leading) {
+    rows.push({ type: "gap", gap: leading });
+  }
 
   for (let index = 0; index < chapters.length; index += 1) {
     const chapter = chapters[index]!;

@@ -22,6 +22,7 @@ const SCAN_CONCURRENCY = 8;
 type BookCoverRef = {
   id: string;
   title: string;
+  category: import("@prisma/client").BookCategory;
   coverUrl: string;
   coverCorrupted: boolean;
   sourceName: string | null;
@@ -77,6 +78,7 @@ async function main() {
     select: {
       id: true,
       title: true,
+      category: true,
       coverUrl: true,
       coverCorrupted: true,
       sourceName: true,

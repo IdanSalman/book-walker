@@ -54,7 +54,7 @@ export function buildStoreWhere(
     genre?: string;
     hideAdult: boolean;
     hideRead?: boolean;
-    userId?: string;
+    caughtUpBookIds?: string[];
     content?: string;
     publication?: string;
     q?: string;
@@ -85,9 +85,10 @@ export function buildStoreWhere(
       : {}),
     ...storeContentFilter(contentFilter),
     ...hideCorruptedCoverFilter(),
-    ...(params.userId
-      ? hideReadStoreBookFilter(params.userId, Boolean(params.hideRead))
-      : {}),
+    ...hideReadStoreBookFilter(
+      Boolean(params.hideRead),
+      params.caughtUpBookIds ?? [],
+    ),
   };
 }
 
@@ -127,20 +128,21 @@ export function genreStoreHref(
   });
 }
 
-function orderByForSort(sort: StoreSort): Prisma.BookOrderByWithRelationInput {
+function orderByForSort(sort: StoreSort): Prisma.BookOrderByWithRelationInput[] {
+  const id: Prisma.BookOrderByWithRelationInput = { id: "asc" };
   switch (sort) {
     case "title-desc":
-      return { title: "desc" };
+      return [{ title: "desc" }, id];
     case "newest":
-      return { createdAt: "desc" };
+      return [{ createdAt: "desc" }, id];
     case "oldest":
-      return { createdAt: "asc" };
+      return [{ createdAt: "asc" }, id];
     case "pages-asc":
-      return { totalPages: "asc" };
+      return [{ totalPages: "asc" }, id];
     case "pages-desc":
-      return { totalPages: "desc" };
+      return [{ totalPages: "desc" }, id];
     default:
-      return { title: "asc" };
+      return [{ title: "asc" }, id];
   }
 }
 
@@ -176,7 +178,7 @@ async function fetchStoreBooksByRating(
       GROUP BY "bookId"
     ) r ON r."bookId" = b.id
     WHERE b.id = ANY(${ids}::text[])
-    ORDER BY r.avg_rating DESC NULLS LAST, b.title ASC
+    ORDER BY r.avg_rating DESC NULLS LAST, b.title ASC, b.id ASC
     OFFSET ${skip} LIMIT ${take}
   `;
 }
@@ -254,7 +256,8 @@ export async function getStoreGenres(
       SELECT 1 FROM "UserBook" ub
       WHERE ub."bookId" = "Book".id
         AND ub."userId" = $${paramIndex}
-        AND ub.status = 'COMPLETED'
+        AND "Book"."totalPages" > 0
+        AND ub."currentPage" >= "Book"."totalPages"
     )`);
     params.push(userId);
     paramIndex++;

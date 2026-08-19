@@ -248,7 +248,7 @@ export function AdminMigratePreviewModal({
 
                   {preview.genres.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
-                      {preview.genres.slice(0, 8).map((genre) => (
+                      {[...new Set(preview.genres)].slice(0, 8).map((genre) => (
                         <Badge key={genre}>{genre}</Badge>
                       ))}
                     </div>

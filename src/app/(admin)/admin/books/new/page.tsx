@@ -14,7 +14,9 @@ export default function NewBookPage() {
         </Link>
         <h1 className="mt-2 text-3xl font-bold text-zinc-50">Add book</h1>
         <p className="mt-1 text-zinc-400">
-          Create a new title in the shared store.
+          Create a new title in the shared store. You can leave the cover blank
+          to fetch one from Open Library or Google Books, and optionally attach
+          a PDF to split into reader pages.
         </p>
       </div>
       <AdminBookForm />

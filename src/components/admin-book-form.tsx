@@ -79,7 +79,7 @@ export function AdminBookForm({
               id="author"
               name="author"
               defaultValue={book?.author ?? ""}
-              placeholder="Writer / author"
+              placeholder="Writer / author — used to pick the right cover"
             />
           </div>
         </div>
@@ -160,12 +160,11 @@ export function AdminBookForm({
 
         <div className="space-y-2">
           <Label htmlFor="summary">Summary</Label>
-          <Textarea
+            <Textarea
             id="summary"
             name="summary"
-            required
             defaultValue={book?.summary}
-            placeholder="Short description of the book"
+            placeholder="Short description — left blank, we fill this from Google Books when possible"
             rows={5}
           />
         </div>
@@ -176,10 +175,28 @@ export function AdminBookForm({
             id="coverUrl"
             name="coverUrl"
             type="url"
-            required
             defaultValue={book?.coverUrl}
-            placeholder="https://example.com/cover.jpg"
+            placeholder="Leave blank to fetch a cover from Open Library / Google Books"
           />
+          <p className="text-xs text-zinc-500">
+            After save, the store searches book catalogs for a cover (and a
+            listing URL) that matches the title and author.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="pdf">PDF file</Label>
+          <Input
+            id="pdf"
+            name="pdf"
+            type="file"
+            accept="application/pdf,.pdf"
+            className="h-auto cursor-pointer file:mr-3 file:rounded-md file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-sm file:text-zinc-200"
+          />
+          <p className="text-xs text-zinc-500">
+            Optional. Splits the file into pages for the in-app reader and sets
+            the type to Book. Only upload files you have the right to store here.
+          </p>
         </div>
 
         <div className="space-y-2">

@@ -14,7 +14,7 @@ import { categoryLabel, categorySlug } from "@/lib/categories";
 import { shouldHideAdultBook } from "@/lib/adult-content";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { isReadableComic } from "@/lib/reader/access";
+import { isReadableInApp } from "@/lib/reader/access";
 import { isReadingSourceUrl } from "@/lib/reader/source-link";
 import { genreStoreHref, storePageHref } from "@/lib/store-query";
 import {
@@ -233,11 +233,13 @@ export default async function BookDetailPage({
           </div>
         )}
 
-        {userBook && isReadableComic(book.category) && (
+        {userBook && isReadableInApp(book.category) && (
           <Suspense
             fallback={
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 text-sm text-zinc-400">
-                Loading chapters…
+                {book.category === "BOOK"
+                  ? "Looking up a public scan…"
+                  : "Loading chapters…"}
               </div>
             }
           >
