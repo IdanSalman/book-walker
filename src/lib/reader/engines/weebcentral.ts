@@ -281,6 +281,8 @@ export const weebCentralEngine: ReaderSourceEngine = {
     "weebcentral.com",
     "lastation.us",
     "planeptune.us",
+    "lowee.us",
+    "leanbox.us",
     "compsci88.com",
   ],
   imageReferer: `${SITE}/`,

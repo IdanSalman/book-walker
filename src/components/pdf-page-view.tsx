@@ -149,6 +149,8 @@ export function PdfPageView({
     const front = frontRef.current;
     const back = backRef.current;
     if (!front || (!fillWidth && !back)) return;
+    const frontCanvas = front;
+    const backCanvas = back;
     let cancelled = false;
 
     function paint(target: HTMLCanvasElement, source: HTMLCanvasElement) {
@@ -166,17 +168,17 @@ export function PdfPageView({
       try {
         const source = await renderPdfPage(url, pageIndex, fillWidth);
         if (cancelled) return;
-        if (fillWidth || !back) {
-          paint(front, source);
+        if (fillWidth || !backCanvas) {
+          paint(frontCanvas, source);
           setError(null);
           return;
         }
-        const hidden = showingFront.current ? back : front;
-        const visible = showingFront.current ? front : back;
+        const hidden = showingFront.current ? backCanvas : frontCanvas;
+        const visible = showingFront.current ? frontCanvas : backCanvas;
         paint(hidden, source);
         hidden.style.visibility = "visible";
         visible.style.visibility = "hidden";
-        showingFront.current = hidden === front;
+        showingFront.current = hidden === frontCanvas;
         setError(null);
       } catch (caught) {
         if (!cancelled) {

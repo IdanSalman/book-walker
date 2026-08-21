@@ -12,6 +12,7 @@ import type {
 } from "@/lib/sources/browse";
 
 export type ReaderBookRef = {
+  id?: string | null;
   title: string;
   sourceUrl: string | null;
   externalId: string | null;

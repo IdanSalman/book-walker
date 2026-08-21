@@ -206,7 +206,7 @@ const mangaResolveCache = new Map<
 >();
 
 function mangaResolveCacheKey(book: ReaderBookRef): string {
-  return `${book.id}:${book.sourceUrl ?? ""}:${book.sourceName ?? ""}`;
+  return `${book.id ?? book.title}:${book.sourceUrl ?? ""}:${book.sourceName ?? ""}`;
 }
 
 export function invalidateMangaResolveCache(bookId?: string) {
@@ -255,7 +255,7 @@ export async function getMangaWithChapters(
 ): Promise<ResolvedManga> {
   const key = mangaResolveCacheKey(book);
   if (isFreshReaderFetch()) {
-    invalidateMangaResolveCache(book.id);
+    invalidateMangaResolveCache(book.id ?? undefined);
   } else {
     const hit = mangaResolveCache.get(key);
     if (hit && hit.expires > Date.now()) return hit.promise;

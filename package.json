@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "vercel-build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "tsx --test src/lib/reader/view-restore.test.ts src/lib/reader/openlibrary-source.test.ts src/lib/reader/pdf-pages.test.ts src/lib/reader/html.test.ts src/lib/reader/source-id.test.ts src/lib/sources/listing-url.test.ts src/lib/sources/catalog-kind.test.ts src/lib/sources/repair-cover.test.ts src/lib/sources/migrate.test.ts",

@@ -1,9 +1,12 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { MAX_PDF_BYTES, isPdfBytes } from "@/lib/reader/pdf-pages";
 
-const PDF_ROOT = path.join(process.cwd(), "data", "pdfs");
+const PDF_ROOT = process.env.VERCEL
+  ? path.join(tmpdir(), "book-walker-pdfs")
+  : path.join(process.cwd(), "data", "pdfs");
 
 function bookDir(bookId: string): string {
   return path.join(PDF_ROOT, bookId);

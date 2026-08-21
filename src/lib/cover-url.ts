@@ -6,6 +6,8 @@ const COVER_REFERERS: { suffix: string; referer: string }[] = [
   { suffix: "weebcentral.com", referer: "https://weebcentral.com/" },
   { suffix: "lastation.us", referer: "https://weebcentral.com/" },
   { suffix: "planeptune.us", referer: "https://weebcentral.com/" },
+  { suffix: "lowee.us", referer: "https://weebcentral.com/" },
+  { suffix: "leanbox.us", referer: "https://weebcentral.com/" },
   { suffix: "compsci88.com", referer: "https://weebcentral.com/" },
   { suffix: "2xstorage.com", referer: "https://www.manganato.gg/" },
   { suffix: "waitst.com", referer: "https://www.manganato.gg/" },
