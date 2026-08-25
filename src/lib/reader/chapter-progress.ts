@@ -71,6 +71,35 @@ export function formatChapterGap(gap: ChapterGap): string {
   return `Missing chapters ${gap.start}–${gap.end}`;
 }
 
+/**
+ * A chapter counts as read after the last page, or once at least half of its
+ * pages have been reached. Opening the first page is not enough unless it is
+ * also the last page.
+ */
+export function chapterCountsAsRead(
+  furthestPageIndex: number,
+  pageCount: number,
+): boolean {
+  if (pageCount <= 0 || furthestPageIndex < 0) return false;
+  const seen = Math.min(furthestPageIndex + 1, pageCount);
+  if (seen >= pageCount) return true;
+  return seen >= 2 && seen / pageCount >= 0.5;
+}
+
+/**
+ * Long-strip (webtoon) progress: opening the top is not enough. Count as read
+ * after scrolling at least halfway down, or to the end.
+ */
+export function stripScrollCountsAsRead(
+  scrollTop: number,
+  clientHeight: number,
+  scrollHeight: number,
+): boolean {
+  const maxScroll = scrollHeight - clientHeight;
+  if (!Number.isFinite(maxScroll) || maxScroll <= 8) return false;
+  return Math.min(1, Math.max(0, scrollTop / maxScroll)) >= 0.5;
+}
+
 export function isChapterRead(
   chapter: ReaderChapter,
   chaptersRead: number,

@@ -8,8 +8,10 @@ import { z } from "zod";
 import { categoryLabel } from "@/lib/categories";
 import { prisma } from "@/lib/prisma";
 import { isPngCoverUrl, scanPngCoverStatuses } from "@/lib/cover-validation";
+import { getFullyReadLibraryMangaIds } from "@/lib/hide-read-titles";
 import { LOCAL_PDF_NAME, pdfPageCount } from "@/lib/reader/pdf-pages";
 import { deleteBookPdf, saveBookPdf } from "@/lib/reader/pdf-store";
+import { revalidateUserLibrary } from "@/lib/revalidate-library";
 import { requireAdmin } from "@/lib/session";
 import { enrichCustomBook, PLACEHOLDER_SUMMARY } from "@/lib/sources/custom-book";
 import {
@@ -543,5 +545,105 @@ export async function syncOngoingManga(
   return {
     success: true,
     message: `Synced ${updated} of ${books.length} manga${suffix}`,
+  };
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function revalidateLibrariesForBooks(bookIds: string[]) {
+  if (bookIds.length === 0) return;
+  const owners = await prisma.userBook.findMany({
+    where: { bookId: { in: bookIds } },
+    distinct: ["userId"],
+    select: { userId: true },
+  });
+  for (const { userId } of owners) {
+    revalidateUserLibrary(userId);
+  }
+  for (const bookId of bookIds) {
+    revalidatePath(`/books/${bookId}`);
+  }
+}
+
+/**
+ * Refetch chapter lists for manga that someone has fully read. When a source
+ * lists more chapters than the catalog, bump the count so hide-read-titles
+ * users see those entries in their library again.
+ */
+export async function refreshCaughtUpManga(): Promise<ActionState> {
+  await requireAdmin();
+
+  const bookIds = await getFullyReadLibraryMangaIds();
+  if (bookIds.length === 0) {
+    return { error: "No fully-read manga in any library" };
+  }
+
+  const books = await prisma.book.findMany({
+    where: { id: { in: bookIds } },
+    select: {
+      id: true,
+      title: true,
+      totalPages: true,
+      externalId: true,
+      sourceUrl: true,
+      sourceName: true,
+      publicationStatus: true,
+    },
+    orderBy: { title: "asc" },
+  });
+
+  let checked = 0;
+  let withNewChapters = 0;
+  const updatedBookIds: string[] = [];
+  const errors: string[] = [];
+
+  for (const [index, book] of books.entries()) {
+    if (index > 0) await sleep(250);
+    try {
+      const result = await syncBookMetadata(book);
+      const hasNewChapters = result.totalPages > book.totalPages;
+      await prisma.book.update({
+        where: { id: book.id },
+        data: {
+          totalPages: hasNewChapters ? result.totalPages : book.totalPages,
+          publicationStatus: result.publicationStatus,
+          sourceUrl: result.sourceUrl ?? book.sourceUrl,
+          sourceName: result.sourceName ?? book.sourceName,
+          externalId: result.externalId ?? book.externalId,
+          lastSyncedAt: result.lastSyncedAt,
+        },
+      });
+      checked += 1;
+      if (hasNewChapters) {
+        withNewChapters += 1;
+        updatedBookIds.push(book.id);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Sync failed";
+      errors.push(`${book.title}: ${message}`);
+    }
+  }
+
+  revalidateCatalog();
+  await revalidateLibrariesForBooks(updatedBookIds);
+
+  if (checked === 0) {
+    return {
+      error: errors[0] ?? "Could not refresh any fully-read manga",
+    };
+  }
+
+  const failed =
+    errors.length > 0 ? ` (${errors.length} failed)` : "";
+  const found =
+    withNewChapters > 0
+      ? `${withNewChapters} with new chapters — those titles are visible in libraries again`
+      : "no new chapters";
+
+  return {
+    success: true,
+    message: `Checked ${checked} fully-read manga: ${found}${failed}`,
   };
 }

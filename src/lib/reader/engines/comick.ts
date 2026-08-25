@@ -7,8 +7,11 @@
 
 import type { PublicationStatus } from "@prisma/client";
 
+import { MD_UUID_RE } from "@/lib/mangadex-api";
 import { asuraEngine } from "@/lib/reader/engines/asura";
 import { createSiteEngine } from "@/lib/reader/engines/site";
+import { weebCentralEngine } from "@/lib/reader/engines/weebcentral";
+import { getPageList as getMangaDexPageList } from "@/lib/reader/mangadex-source";
 import { assertNotBlocked, originOf } from "@/lib/reader/html";
 import {
   parseChapterNumber,
@@ -16,6 +19,7 @@ import {
   uniqueUrls,
 } from "@/lib/reader/source-fetch";
 import {
+  decodeChapterId,
   encodeChapterId,
   normalizeTitle,
   titlesMatch,
@@ -103,6 +107,7 @@ type ComickChapterDetail = {
     chap?: string | number | null;
     images?: ComickPage[];
     md_images?: ComickPage[];
+    mdid?: string | null;
     group_name?: string[] | null;
     md_chapters_groups?: {
       md_groups?: { slug?: string | null; title?: string | null };
@@ -511,11 +516,14 @@ const SKIP_ORIGINAL_IDS = new Set([
   "batoto",
   "kakao",
   "kagane",
+  "mangalife",
+  "mangasee",
   "reaper",
   "reaperscans",
   "tapas",
   "webtoon",
   "webtoons",
+  "weebcentral",
   "yenpress",
 ]);
 
@@ -531,6 +539,73 @@ function originalLinkId(link: ComickLink): string {
 function isSkippedOriginal(id: string): boolean {
   return [...SKIP_ORIGINAL_IDS].some(
     (skip) => id === skip || id.includes(skip),
+  );
+}
+
+async function pagesFromMangaDex(
+  mdid: string | null | undefined,
+  dataSaver: boolean,
+): Promise<ReaderPage[]> {
+  const id = mdid?.trim() ?? "";
+  if (!MD_UUID_RE.test(id)) return [];
+  try {
+    const pages = await getMangaDexPageList(id, dataSaver);
+    if (pages.length === 0) return [];
+    return pages.map((page) => ({
+      ...page,
+      referer: page.referer ?? "https://mangadex.org/",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function pagesFromWeebCentral(
+  seriesSlug: string,
+  chap: string,
+): Promise<ReaderPage[]> {
+  const query = seriesSlug.replace(/[-_]+/g, " ").trim();
+  const chapterNumber = parseChapterNumber(chap);
+  if (!query || chapterNumber < 0) return [];
+  try {
+    const hits = await weebCentralEngine.search(query);
+    const needle = compactToken(query);
+    const match =
+      hits.find((hit) => titlesMatch(hit.title, query)) ??
+      hits.find((hit) => {
+        const token = compactToken(hit.title);
+        return token === needle || token.includes(needle) || needle.includes(token);
+      }) ??
+      hits[0];
+    if (!match) return [];
+    const resolved = await weebCentralEngine.resolveManga({
+      title: match.title,
+      sourceUrl: match.url,
+      externalId: match.id,
+    });
+    const chapter = resolved.chapters.find(
+      (row) => Math.abs(row.chapterNumber - chapterNumber) < 0.001,
+    );
+    if (!chapter) return [];
+    const ref = decodeChapterId(chapter.id);
+    if (!ref) return [];
+    const pages = await weebCentralEngine.getPageList(ref.payload);
+    if (pages.length === 0) return [];
+    return pages.map((page) => ({
+      ...page,
+      referer: page.referer ?? weebCentralEngine.imageReferer,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function mangaseeSlug(links: ComickLink[] | undefined): string | null {
+  return (
+    (links ?? []).find((link) => {
+      const id = originalLinkId(link);
+      return id === "mangasee" || id === "mangalife" || id === "weebcentral";
+    })?.slug?.trim() || null
   );
 }
 
@@ -757,9 +832,9 @@ export const comickEngine: ReaderSourceEngine = {
     };
   },
 
-  async getPageList(payload) {
-    // tachiyomi=true no longer includes page lists; use the public chapter
-    // payload (md_images) and /get_images, then the original scanlation site.
+  async getPageList(payload, dataSaver = false) {
+    // Comick often stores empty md_images now. Fall back to MangaDex (mdid),
+    // Weeb Central (MangaSee links), then the original scanlation site.
     const json = await comickJson<ComickChapterDetail>(
       `/chapter/${encodeURIComponent(payload)}`,
       false,
@@ -775,6 +850,19 @@ export const comickEngine: ReaderSourceEngine = {
       urls = pageUrlsFromImages(listed ?? undefined);
     }
     if (urls.length > 0) return toPages(urls);
+
+    const fromDex = await pagesFromMangaDex(json.chapter?.mdid, dataSaver);
+    if (fromDex.length > 0) return fromDex;
+
+    const chap =
+      json.chapter?.chap != null
+        ? String(json.chapter.chap).replace(/\.0$/, "")
+        : "";
+    const seeSlug = mangaseeSlug(json.chapter?.md_comics?.links2);
+    if (seeSlug && chap) {
+      const fromWeeb = await pagesFromWeebCentral(seeSlug, chap);
+      if (fromWeeb.length > 0) return fromWeeb;
+    }
 
     const fallback = await pagesFromOriginalSite(json);
     if (fallback.length > 0) return fallback;

@@ -9,6 +9,7 @@ import { AdminCorruptedCoversToggle } from "@/components/admin-corrupted-covers-
 import { AdminCoverCorruptedToggle } from "@/components/admin-cover-corrupted-toggle";
 import { AdminFilters } from "@/components/admin-filters";
 import { AdminPagination } from "@/components/admin-pagination";
+import { AdminRefreshCaughtUpButton } from "@/components/admin-refresh-caught-up-button";
 import { AdminScanCoversButtons } from "@/components/admin-scan-covers-button";
 import { AdminSyncOngoingButtons } from "@/components/admin-sync-ongoing-button";
 import { CoverImage } from "@/components/cover-image";
@@ -163,6 +164,7 @@ export default async function AdminBooksPage({
 
       <AdminScanCoversButtons bookIds={books.map((book) => book.id)} />
       <AdminSyncOngoingButtons bookIds={books.map((book) => book.id)} />
+      <AdminRefreshCaughtUpButton />
 
       {books.length === 0 ? (
         <div className="rounded-xl border border-dashed border-zinc-800 px-6 py-12 text-center">

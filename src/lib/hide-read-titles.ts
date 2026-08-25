@@ -15,6 +15,23 @@ export async function getCaughtUpBookIds(userId: string): Promise<string[]> {
   return rows.map((row) => row.bookId);
 }
 
+/**
+ * Manga in any library where at least one reader has finished every listed
+ * chapter. Those titles stay hidden for users with hide-read-titles on until
+ * the catalog chapter count increases.
+ */
+export async function getFullyReadLibraryMangaIds(): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ bookId: string }[]>`
+    SELECT DISTINCT ub."bookId" AS "bookId"
+    FROM "UserBook" ub
+    INNER JOIN "Book" b ON b.id = ub."bookId"
+    WHERE b.category = 'MANGA'
+      AND b."totalPages" > 0
+      AND ub."currentPage" >= b."totalPages"
+  `;
+  return rows.map((row) => row.bookId);
+}
+
 export function hideReadUserBookFilter(
   hideRead: boolean,
   caughtUpBookIds: string[],

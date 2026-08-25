@@ -26,8 +26,10 @@ import { PdfPageView, prefetchPdfPage } from "@/components/pdf-page-view";
 import { Button } from "@/components/ui/button";
 import {
   adjacentDistinctChapter,
+  chapterCountsAsRead,
   isChapterRead,
   readerProgressValue,
+  stripScrollCountsAsRead,
 } from "@/lib/reader/chapter-progress";
 import type { ReaderChapter, ReadingMode } from "@/lib/reader/types";
 import { readingModeLabel } from "@/lib/reader/types";
@@ -300,6 +302,8 @@ export function MangaReader({
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const ignoreClick = useRef(false);
   const completedRef = useRef(false);
+  const furthestPageRef = useRef(0);
+  const furthestStripRef = useRef(0);
   const restoreSettledRef = useRef(false);
   const lastMouse = useRef<{ x: number; y: number } | null>(null);
 
@@ -382,9 +386,9 @@ export function MangaReader({
 
   useEffect(() => {
     if (loading || error) return;
-    restoreSettledRef.current = true;
+    if (mode !== "webtoon") restoreSettledRef.current = true;
     saveChapterView();
-  }, [loading, error, pageIndex, saveChapterView]);
+  }, [loading, error, pageIndex, saveChapterView, mode]);
 
   useEffect(() => {
     if (!pageState.loading) {
@@ -441,6 +445,8 @@ export function MangaReader({
     let cancelled = false;
     let timedOut = false;
     completedRef.current = false;
+    furthestPageRef.current = 0;
+    furthestStripRef.current = 0;
     const key = pagesCacheKey(resolvedChapterId, dataSaver);
     const cached = pagesCache.get(key);
     if (cached) {
@@ -641,13 +647,38 @@ export function MangaReader({
     [bookId, resolvedChapterId, saveChapterView],
   );
 
-  const markCompleteAndMaybeAdvance = useCallback(() => {
-    if (completedRef.current) return;
-    completedRef.current = true;
-    reportProgress(true);
-  }, [reportProgress]);
+  const markCompleteAndMaybeAdvance = useCallback(
+    (forceEnd = false) => {
+      if (!forceEnd) {
+        if (mode === "webtoon") {
+          if (furthestStripRef.current < 0.5) return;
+        } else {
+          const furthest = Math.max(furthestPageRef.current, pageIndex);
+          furthestPageRef.current = furthest;
+          if (!chapterCountsAsRead(furthest, pages.length)) return;
+        }
+      }
+      if (completedRef.current) return;
+      completedRef.current = true;
+      reportProgress(true);
+    },
+    [mode, pageIndex, pages.length, reportProgress],
+  );
 
-  const atLastPage = pages.length > 0 && pageIndex >= pages.length - 1;
+  const noteStripScroll = useCallback(() => {
+    if (!restoreSettledRef.current) return;
+    if (
+      !stripScrollCountsAsRead(
+        window.scrollY,
+        window.innerHeight,
+        document.documentElement.scrollHeight,
+      )
+    ) {
+      return;
+    }
+    furthestStripRef.current = 1;
+    markCompleteAndMaybeAdvance();
+  }, [markCompleteAndMaybeAdvance]);
 
   const goNextPage = useCallback(() => {
     if (pageIndex < pages.length - 1) {
@@ -657,7 +688,7 @@ export function MangaReader({
         return;
       }
     }
-    markCompleteAndMaybeAdvance();
+    markCompleteAndMaybeAdvance(true);
     if (nextChapter) goToChapter(nextChapter.id);
   }, [
     pageIndex,
@@ -679,10 +710,28 @@ export function MangaReader({
   }, [pageIndex, pages, prevChapter, goToChapter]);
 
   useEffect(() => {
-    if (atLastPage && pages.length > 0) {
+    if (
+      progressMode === "page" ||
+      mode === "webtoon" ||
+      loading ||
+      error ||
+      pages.length === 0
+    ) {
+      return;
+    }
+    furthestPageRef.current = Math.max(furthestPageRef.current, pageIndex);
+    if (chapterCountsAsRead(furthestPageRef.current, pages.length)) {
       markCompleteAndMaybeAdvance();
     }
-  }, [atLastPage, pages.length, markCompleteAndMaybeAdvance]);
+  }, [
+    progressMode,
+    mode,
+    loading,
+    error,
+    pages.length,
+    pageIndex,
+    markCompleteAndMaybeAdvance,
+  ]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -881,10 +930,16 @@ export function MangaReader({
             }
             onRestoreSettled={() => {
               restoreSettledRef.current = true;
+              noteStripScroll();
             }}
-            onLastPage={markCompleteAndMaybeAdvance}
+            onScrollProgress={noteStripScroll}
             onNextChapter={
-              nextChapter ? () => goToChapter(nextChapter.id) : undefined
+              nextChapter
+                ? () => {
+                    markCompleteAndMaybeAdvance(true);
+                    goToChapter(nextChapter.id);
+                  }
+                : undefined
             }
           />
         )}
@@ -1129,36 +1184,44 @@ function PagedImage({ url, alt }: { url: string; alt: string }) {
 function WebtoonViewer({
   pages,
   restoreScroll,
-  onLastPage,
+  onScrollProgress,
   onNextChapter,
   onRestoreSettled,
 }: {
   pages: PagePayload[];
   restoreScroll: number | "end";
-  onLastPage: () => void;
+  onScrollProgress: () => void;
   onNextChapter?: () => void;
   onRestoreSettled?: () => void;
 }) {
-  const lastRef = useRef<HTMLElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const onScrollProgressRef = useRef(onScrollProgress);
+  onScrollProgressRef.current = onScrollProgress;
 
   useEffect(() => {
-    const node = lastRef.current;
-    if (!node) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          onLastPage();
-        }
-      },
-      { threshold: 0.4 },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [pages, onLastPage]);
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        onScrollProgressRef.current();
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    const root = rootRef.current;
+    const resize = new ResizeObserver(() => onScrollProgressRef.current());
+    if (root) resize.observe(root);
+    onScrollProgressRef.current();
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+      resize.disconnect();
+    };
+  }, [pages]);
 
   useEffect(() => {
     if (restoreScroll === 0) {
+      window.scrollTo(0, 0);
       onRestoreSettled?.();
       return;
     }
@@ -1231,13 +1294,6 @@ function WebtoonViewer({
         page.render === "pdf" ? (
           <div
             key={`${page.index}-${page.url}`}
-            ref={
-              index === pages.length - 1
-                ? (node) => {
-                    lastRef.current = node;
-                  }
-                : undefined
-            }
             className="w-full bg-white"
           >
             <PdfPageView
@@ -1247,19 +1303,16 @@ function WebtoonViewer({
             />
           </div>
         ) : (
-          <ReaderPageImage
+          <div
             key={`${page.index}-${page.url}`}
-            imgRef={
-              index === pages.length - 1
-                ? (node) => {
-                    lastRef.current = node;
-                  }
-                : undefined
-            }
-            url={page.url}
-            alt={`Page ${index + 1}`}
             className="w-full"
-          />
+          >
+            <ReaderPageImage
+              url={page.url}
+              alt={`Page ${index + 1}`}
+              className="w-full"
+            />
+          </div>
         ),
       )}
       {onNextChapter && (
@@ -1269,7 +1322,6 @@ function WebtoonViewer({
             className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500"
             onClick={(event) => {
               event.stopPropagation();
-              onLastPage();
               onNextChapter();
             }}
           >
