@@ -32,6 +32,7 @@ const MANGABOX_MIRRORS = [
   "https://www.natomanga.com",
   "https://www.nelomanga.com",
   "https://www.nelomanga.net",
+  "https://www.mangakakalot.gg",
 ];
 
 const originCache = new Map<string, Promise<string>>();

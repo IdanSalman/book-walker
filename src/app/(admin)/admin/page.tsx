@@ -101,7 +101,11 @@ export default async function AdminOverviewPage() {
                 value={row._count._all.toLocaleString()}
               />
             ))}
-            <Row label="Adult titles" value={adultBooks.toLocaleString()} />
+            <Row
+              label="Adult titles"
+              value={adultBooks.toLocaleString()}
+              href={adminBooksHref({ adultOnly: true })}
+            />
             <Row
               label="Hidden (broken cover)"
               value={hiddenCovers.toLocaleString()}

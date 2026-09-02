@@ -69,3 +69,20 @@ export function storeContentFilter(
   if (filter === "safe") return { isAdult: false };
   return {};
 }
+
+/** Admin catalog: either hide adult titles or list only those titles. */
+export type CatalogAdultFilter = "none" | "only";
+
+export function parseCatalogAdultFilter(
+  adult?: string,
+): CatalogAdultFilter {
+  const value = adult?.trim().toLowerCase();
+  if (value === "only" || value === "1" || value === "true") return "only";
+  return "none";
+}
+
+export function catalogAdultBookFilter(filter: CatalogAdultFilter): {
+  isAdult: boolean;
+} {
+  return { isAdult: filter === "only" };
+}

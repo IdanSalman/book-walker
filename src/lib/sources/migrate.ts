@@ -14,7 +14,7 @@ import {
 import { normalizeTitle, titlesMatch } from "@/lib/reader/source-id";
 import type { CatalogCandidate, ReaderChapter } from "@/lib/reader/types";
 import { catalogCategoryForSource } from "@/lib/sources/catalog-kind";
-import { getBrowsableSources } from "@/lib/sources/browsable";
+import { ensureBuiltInSources } from "@/lib/sources/ensure";
 
 export type MigrationSource = {
   key: string;
@@ -63,13 +63,56 @@ const LATEST_CHAPTERS = 12;
 
 const RESULTS_PER_SOURCE = 8;
 
+const TITLE_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "ch",
+  "chapter",
+  "of",
+  "part",
+  "season",
+  "the",
+  "to",
+  "vol",
+  "volume",
+]);
+
+function significantTokens(title: string): string[] {
+  return normalizeTitle(title)
+    .split(" ")
+    .filter((token) => token.length > 1 && !TITLE_STOPWORDS.has(token));
+}
+
 export function candidateMatchScore(query: string, title: string): number {
-  if (titlesMatch(query, title)) return 3;
+  if (titlesMatch(query, title)) return 4;
   const needle = normalizeTitle(query);
   const haystack = normalizeTitle(title);
   if (!needle || !haystack) return 0;
-  if (haystack.startsWith(needle) || needle.startsWith(haystack)) return 2;
-  if (haystack.includes(needle) || needle.includes(haystack)) return 1;
+  if (haystack.startsWith(needle) || needle.startsWith(haystack)) return 3;
+  if (haystack.includes(needle) || needle.includes(haystack)) return 2;
+
+  const queryTokens = significantTokens(query);
+  if (queryTokens.length === 0) return 0;
+  const titleTokens = significantTokens(title);
+  if (titleTokens.length === 0) return 0;
+  const titleSet = new Set(titleTokens);
+  const matched = queryTokens.filter(
+    (token) =>
+      titleSet.has(token) ||
+      titleTokens.some(
+        (other) => other.includes(token) || token.includes(other),
+      ),
+  );
+  if (matched.length === queryTokens.length) return 2;
+  if (matched.length >= 2) return 1;
+  if (
+    matched.length === 1 &&
+    queryTokens.length === 1 &&
+    matched[0].length >= 4
+  ) {
+    return 1;
+  }
   return 0;
 }
 
@@ -103,24 +146,49 @@ export async function listMigrationSources(book: {
   sourceUrl: string | null;
   category?: BookCategory;
 }): Promise<MigrationSource[]> {
-  const sources = await getBrowsableSources();
+  await ensureBuiltInSources();
+  const rows = await prisma.fetchSource.findMany({
+    where: { enabled: true },
+    orderBy: [{ priority: "desc" }, { name: "asc" }],
+    select: {
+      key: true,
+      name: true,
+      kind: true,
+      family: true,
+      supportsSearch: true,
+      supportsReading: true,
+    },
+  });
   const current = currentEngineKeys(book);
   const wanted =
     book.category === "BOOK" ? ("BOOK" as const) : ("MANGA" as const);
-  let pool = sources.filter(
-    (source) => catalogCategoryForSource(source) === wanted,
-  );
+
+  const pool: MigrationSource[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (row.kind === "METADATA") continue;
+    if (catalogCategoryForSource(row) !== wanted) continue;
+    if (!row.supportsSearch && !row.supportsReading) continue;
+    const engine = await sourceEngine(row.key);
+    if (!engine) continue;
+    if (seen.has(engine.key)) continue;
+    seen.add(engine.key);
+    pool.push({
+      key: engine.key,
+      name: row.key === engine.key ? row.name : engine.name,
+    });
+  }
+
   if (wanted === "BOOK") {
     const openLibrary = await sourceEngine("openlibrary");
     if (openLibrary) {
-      pool = uniqueSources([
-        ...pool,
-        { key: openLibrary.key, name: openLibrary.name },
-      ]);
+      pool.push({ key: openLibrary.key, name: openLibrary.name });
     }
   }
-  const others = pool.filter((source) => !current.has(source.key));
-  return uniqueSources(others.length > 0 ? others : pool);
+
+  const unique = uniqueSources(pool);
+  const others = unique.filter((source) => !current.has(source.key));
+  return others.length > 0 ? others : unique;
 }
 
 export async function searchMigrationCandidates(opts: {

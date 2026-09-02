@@ -122,9 +122,9 @@ export function AdminMigrateSource({
           Migrate source
         </h3>
         <p className="mt-1 text-xs text-zinc-500">
-          Move this listing from {from} to another scanlation site. Click a
-          match to inspect it before migrating. Library progress and date added
-          stay with the title.
+          Move this listing from {from} by searching every enabled manga source,
+          not just sites with a browse page. Click a match to inspect it before
+          migrating. Library progress and date added stay with the title.
         </p>
       </div>
 

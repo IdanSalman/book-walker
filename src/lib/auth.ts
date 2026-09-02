@@ -72,7 +72,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       if (token.id) {
-        await syncUserToken(token);
+        try {
+          await syncUserToken(token);
+        } catch (error) {
+          const code =
+            typeof error === "object" && error && "code" in error
+              ? String((error as { code: unknown }).code)
+              : "";
+          if (code === "P1001") {
+            console.warn(
+              "[auth] database unreachable, using cached session token",
+            );
+          } else {
+            console.error("[auth] failed to sync user from database", error);
+          }
+        }
       }
 
       return token;
@@ -100,19 +114,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user }) {
       if (!user.id) return;
 
-      const dbUser = await prisma.user.findUnique({
-        where: { id: user.id },
-        select: { onboardingComplete: true },
-      });
+      try {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { onboardingComplete: true },
+        });
 
-      const role = resolveRole(user.email);
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          role,
-          ...(!dbUser?.onboardingComplete ? { name: null } : {}),
-        },
-      });
+        const role = resolveRole(user.email);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            role,
+            ...(!dbUser?.onboardingComplete ? { name: null } : {}),
+          },
+        });
+      } catch (error) {
+        console.error("[auth] signIn event failed", error);
+      }
     },
   },
 });

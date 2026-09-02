@@ -7,12 +7,11 @@
 
 import type { PublicationStatus } from "@prisma/client";
 
-import { MD_UUID_RE } from "@/lib/mangadex-api";
+import { MD_UUID_RE, mangadexFetch } from "@/lib/mangadex-api";
 import { asuraEngine } from "@/lib/reader/engines/asura";
-import { createSiteEngine } from "@/lib/reader/engines/site";
 import { weebCentralEngine } from "@/lib/reader/engines/weebcentral";
 import { getPageList as getMangaDexPageList } from "@/lib/reader/mangadex-source";
-import { assertNotBlocked, originOf } from "@/lib/reader/html";
+import { assertNotBlocked } from "@/lib/reader/html";
 import {
   parseChapterNumber,
   sourceFetch,
@@ -94,6 +93,7 @@ type ComickChapter = {
 type ComickPage = {
   url?: string | null;
   b2key?: string | null;
+  gpurl?: string | null;
 };
 
 type ComickLink = {
@@ -115,6 +115,7 @@ type ComickChapterDetail = {
     md_comics?: {
       title?: string | null;
       slug?: string | null;
+      links?: { al?: string | null } | null;
       links2?: ComickLink[];
     };
   };
@@ -427,13 +428,76 @@ function compactToken(value: string | null | undefined): string {
   return (value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+function matchingChapter(
+  chapters: ReaderChapter[],
+  chap: string,
+): ReaderChapter | undefined {
+  const chapterNumber = parseChapterNumber(chap);
+  if (chapterNumber < 0) return undefined;
+  return chapters.find(
+    (chapter) => Math.abs(chapter.chapterNumber - chapterNumber) < 0.001,
+  );
+}
+
+function pickCatalogHit<T extends { title: string }>(
+  hits: T[],
+  title: string,
+  extra?: (hit: T) => boolean,
+): T | undefined {
+  if (hits.length === 0) return undefined;
+  const exact = extra ? hits.find(extra) : undefined;
+  if (exact) return exact;
+  const needle = compactToken(title);
+  return (
+    hits.find((hit) => titlesMatch(hit.title, title)) ??
+    hits.find((hit) => {
+      const token = compactToken(hit.title);
+      return token.length > 0 && token === needle;
+    })
+  );
+}
+
+async function pagesFromEngineTitle(
+  engine: ReaderSourceEngine,
+  title: string,
+  chap: string,
+): Promise<ReaderPage[]> {
+  const query = title.replace(/[-_]+/g, " ").trim();
+  if (!query || parseChapterNumber(chap) < 0) return [];
+  try {
+    const hits = await engine.search(query);
+    const match = pickCatalogHit(hits, query);
+    if (!match) return [];
+    const resolved = await engine.resolveManga({
+      title: match.title,
+      sourceUrl: match.url,
+      externalId: match.id,
+    });
+    const chapter = matchingChapter(resolved.chapters, chap);
+    if (!chapter) return [];
+    const ref = decodeChapterId(chapter.id);
+    if (!ref) return [];
+    const pages = await engine.getPageList(ref.payload);
+    if (pages.length === 0) return [];
+    return pages.map((page) => ({
+      ...page,
+      referer: page.referer ?? engine.imageReferer,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 function pageUrlsFromImages(images: ComickPage[] | undefined): string[] {
   return uniqueUrls(
     (images ?? [])
       .map((image) => {
         if (image.url?.startsWith("http")) return image.url;
         if (image.b2key) return `${COVER}/${image.b2key.replace(/^\//, "")}`;
-        return null;
+        const gpurl = image.gpurl?.trim();
+        if (!gpurl) return null;
+        if (/^https?:\/\//i.test(gpurl) || /siasky/i.test(gpurl)) return gpurl;
+        return `https://lh3.googleusercontent.com/${gpurl.replace(/^\//, "")}`;
       })
       .filter((url): url is string => Boolean(url)),
   );
@@ -445,101 +509,8 @@ function toPages(urls: string[], referer?: string): ReaderPage[] {
   );
 }
 
-function pickOriginalLink(
-  links: ComickLink[] | undefined,
-  groupSlug: string | null,
-  groupTitle: string | null,
-): ComickLink | null {
-  const enabled = (links ?? []).filter(
-    (link) => link.enable !== false && (link.id || link.slug),
-  );
-  if (enabled.length === 0) return null;
-  const needles = [groupSlug, groupTitle].map(compactToken).filter(Boolean);
-  return (
-    enabled.find((link) => {
-      const id = compactToken(link.id);
-      return needles.some(
-        (needle) => id === needle || id.includes(needle) || needle.includes(id),
-      );
-    }) ?? enabled[0]
-  );
-}
-
-async function groupSiteOrigin(groupSlug: string): Promise<string | null> {
-  const json = await comickJsonOrNull<{ group?: { links?: string[] } }>(
-    `/group/${encodeURIComponent(groupSlug)}`,
-    3600,
-  );
-  const link = json?.group?.links?.find((item) => /^https?:\/\//i.test(item));
-  if (!link) return null;
-  try {
-    return originOf(link);
-  } catch {
-    return null;
-  }
-}
-
-async function pagesFromEngineChapter(
-  engine: ReturnType<typeof createSiteEngine>,
-  origin: string,
-  paths: string[],
-): Promise<ReaderPage[]> {
-  const referer = `${origin}/`;
-  for (const path of paths) {
-    try {
-      const pages = await engine.getPageList(path);
-      if (pages.length > 0) {
-        return pages.map((page) => ({
-          ...page,
-          referer: page.referer ?? referer,
-        }));
-      }
-    } catch {
-      /* try the next constructed chapter URL */
-    }
-  }
-  return [];
-}
-
-function chapterPathCandidates(seriesSlug: string, chap: string): string[] {
-  return [
-    `/comics/${seriesSlug}/chapter/${chap}`,
-    `/${seriesSlug}-chapter-${chap}/`,
-    `/series/${seriesSlug}/chapter-${chap}/`,
-    `/manga/${seriesSlug}/chapter-${chap}/`,
-  ];
-}
-
-const SKIP_ORIGINAL_IDS = new Set([
-  "amazon",
-  "bato",
-  "batoto",
-  "kakao",
-  "kagane",
-  "mangalife",
-  "mangasee",
-  "reaper",
-  "reaperscans",
-  "tapas",
-  "webtoon",
-  "webtoons",
-  "weebcentral",
-  "yenpress",
-]);
-
-const KNOWN_ORIGINAL_ORIGINS: Record<string, string> = {
-  asura: "https://asurascans.com",
-  asurascans: "https://asurascans.com",
-};
-
 function originalLinkId(link: ComickLink): string {
   return (link.id ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
-}
-
-function isSkippedOriginal(id: string): boolean {
-  return [...SKIP_ORIGINAL_IDS].some(
-    (skip) => id === skip || id.includes(skip),
-  );
 }
 
 async function pagesFromMangaDex(
@@ -560,41 +531,67 @@ async function pagesFromMangaDex(
   }
 }
 
-async function pagesFromWeebCentral(
-  seriesSlug: string,
+async function pagesFromMangaDexTitle(
+  title: string,
   chap: string,
+  anilistId: string | null | undefined,
+  dataSaver: boolean,
 ): Promise<ReaderPage[]> {
-  const query = seriesSlug.replace(/[-_]+/g, " ").trim();
-  const chapterNumber = parseChapterNumber(chap);
-  if (!query || chapterNumber < 0) return [];
+  const query = title.trim();
+  const chapter = chap.replace(/\.0$/, "").trim();
+  if (!query || parseChapterNumber(chapter) < 0) return [];
   try {
-    const hits = await weebCentralEngine.search(query);
-    const needle = compactToken(query);
-    const match =
-      hits.find((hit) => titlesMatch(hit.title, query)) ??
-      hits.find((hit) => {
-        const token = compactToken(hit.title);
-        return token === needle || token.includes(needle) || needle.includes(token);
-      }) ??
-      hits[0];
-    if (!match) return [];
-    const resolved = await weebCentralEngine.resolveManga({
-      title: match.title,
-      sourceUrl: match.url,
-      externalId: match.id,
-    });
-    const chapter = resolved.chapters.find(
-      (row) => Math.abs(row.chapterNumber - chapterNumber) < 0.001,
+    const search = await mangadexFetch(
+      `/manga?title=${encodeURIComponent(query)}` +
+        `&limit=10&order[relevance]=desc` +
+        `&contentRating[]=safe&contentRating[]=suggestive` +
+        `&contentRating[]=erotica&contentRating[]=pornographic`,
+      { revalidate: 3600 },
     );
-    if (!chapter) return [];
-    const ref = decodeChapterId(chapter.id);
-    if (!ref) return [];
-    const pages = await weebCentralEngine.getPageList(ref.payload);
-    if (pages.length === 0) return [];
-    return pages.map((page) => ({
-      ...page,
-      referer: page.referer ?? weebCentralEngine.imageReferer,
-    }));
+    const found = (await search.json()) as {
+      data?: {
+        id?: string;
+        attributes?: {
+          title?: Record<string, string>;
+          altTitles?: Record<string, string>[];
+          links?: { al?: string | null } | null;
+        };
+      }[];
+    };
+    const hits = (found.data ?? [])
+      .filter((row): row is { id: string; attributes?: (typeof row)["attributes"] } =>
+        Boolean(row.id),
+      )
+      .map((row) => {
+        const names = [
+          ...Object.values(row.attributes?.title ?? {}),
+          ...(row.attributes?.altTitles ?? []).flatMap((entry) =>
+            Object.values(entry),
+          ),
+        ].filter(Boolean);
+        return {
+          id: row.id,
+          title: names[0] ?? "",
+          names,
+          anilistId: row.attributes?.links?.al?.trim() ?? null,
+        };
+      });
+    const al = anilistId?.trim() ?? "";
+    const match =
+      hits.find((hit) => Boolean(al && hit.anilistId === al)) ??
+      hits.find((hit) => hit.names.some((name) => titlesMatch(name, query)));
+    if (!match) return [];
+    const res = await mangadexFetch(
+      `/chapter?manga=${encodeURIComponent(match.id)}` +
+        `&chapter=${encodeURIComponent(chapter)}` +
+        `&translatedLanguage[]=${LANG}` +
+        `&includeUnavailable=0&includeExternalUrl=0` +
+        `&limit=5&order[readableAt]=desc`,
+      { revalidate: 300 },
+    );
+    const json = (await res.json()) as { data?: { id?: string }[] };
+    const mdid = json.data?.find((row) => row.id && MD_UUID_RE.test(row.id))?.id;
+    return pagesFromMangaDex(mdid, dataSaver);
   } catch {
     return [];
   }
@@ -625,86 +622,25 @@ async function pagesFromAsuraLink(
   }
 }
 
-async function originForLink(
-  link: ComickLink,
-  fallbackSlug: string | null,
-): Promise<string | null> {
-  const host = originalLinkId(link);
-  if (isSkippedOriginal(host)) return null;
-  const known = KNOWN_ORIGINAL_ORIGINS[host];
-  if (known) return known;
-  const slugs = [fallbackSlug, host].filter((value, index, all): value is string => {
-    return Boolean(value) && all.indexOf(value) === index;
-  });
-  for (const slug of slugs) {
-    if (isSkippedOriginal(slug)) continue;
-    const origin = await groupSiteOrigin(slug);
-    if (origin) return origin;
-  }
-  return null;
-}
-
 async function pagesFromOriginalSite(
   detail: ComickChapterDetail,
 ): Promise<ReaderPage[]> {
   const chapter = detail.chapter;
   if (!chapter) return [];
-  const groupSlug =
-    chapter.md_chapters_groups
-      ?.map((row) => row.md_groups?.slug?.trim())
-      .find(Boolean) ??
-    chapter.group_name
-      ?.map((name) => name.trim().toLowerCase().replace(/\s+/g, "-"))
-      .find(Boolean) ??
-    null;
-  const groupTitle = chapter.group_name?.find(Boolean) ?? null;
+  const title = chapter.md_comics?.title?.trim() ?? "";
   const chap =
     chapter.chap != null ? String(chapter.chap).replace(/\.0$/, "") : "";
-  const chapterNumber = parseChapterNumber(chap);
-  if (chapterNumber < 0) return [];
+  if (parseChapterNumber(chap) < 0) return [];
 
-  const matched = pickOriginalLink(
-    chapter.md_comics?.links2,
-    groupSlug,
-    groupTitle,
+  const asuraLink = (chapter.md_comics?.links2 ?? []).find((link) =>
+    originalLinkId(link).includes("asura"),
   );
-  const links = [
-    matched,
-    ...(chapter.md_comics?.links2 ?? []).filter((link) => link !== matched),
-  ].filter((link): link is ComickLink => Boolean(link?.slug));
-
-  const asuraLink = links.find((link) => {
-    const id = originalLinkId(link);
-    return id.includes("asura");
-  });
   if (asuraLink?.slug) {
     const pages = await pagesFromAsuraLink(asuraLink.slug, chap);
     if (pages.length > 0) return pages;
   }
-
-  const seenOrigins = new Set<string>();
-  let attempts = 0;
-  for (const link of links) {
-    if (attempts >= 2) break;
-    if (originalLinkId(link).includes("asura")) continue;
-    const origin = await originForLink(link, groupSlug);
-    if (!origin || seenOrigins.has(origin)) continue;
-    seenOrigins.add(origin);
-    const seriesSlug = link.slug?.trim();
-    if (!seriesSlug) continue;
-    attempts += 1;
-
-    const engine = createSiteEngine({
-      key: "comick-origin",
-      name: groupTitle || "Comick",
-      baseUrl: origin,
-    });
-    const pages = await pagesFromEngineChapter(
-      engine,
-      origin,
-      chapterPathCandidates(seriesSlug, chap),
-    );
-    if (pages.length > 0) return pages;
+  if (title) {
+    return pagesFromEngineTitle(asuraEngine, title, chap);
   }
   return [];
 }
@@ -833,8 +769,8 @@ export const comickEngine: ReaderSourceEngine = {
   },
 
   async getPageList(payload, dataSaver = false) {
-    // Comick often stores empty md_images now. Fall back to MangaDex (mdid),
-    // Weeb Central (MangaSee links), then the original scanlation site.
+    // Comick often stores empty md_images now. Fall back to MangaDex (mdid or
+    // title/AniList), Weeb Central, then the original scanlation site.
     const json = await comickJson<ComickChapterDetail>(
       `/chapter/${encodeURIComponent(payload)}`,
       false,
@@ -851,17 +787,37 @@ export const comickEngine: ReaderSourceEngine = {
     }
     if (urls.length > 0) return toPages(urls);
 
-    const fromDex = await pagesFromMangaDex(json.chapter?.mdid, dataSaver);
-    if (fromDex.length > 0) return fromDex;
-
     const chap =
       json.chapter?.chap != null
         ? String(json.chapter.chap).replace(/\.0$/, "")
         : "";
+    const title = json.chapter?.md_comics?.title?.trim() ?? "";
+    const anilistId = json.chapter?.md_comics?.links?.al ?? null;
+
+    const fromDex = await pagesFromMangaDex(json.chapter?.mdid, dataSaver);
+    if (fromDex.length > 0) return fromDex;
+
+    if (title && chap) {
+      const fromDexTitle = await pagesFromMangaDexTitle(
+        title,
+        chap,
+        anilistId,
+        dataSaver,
+      );
+      if (fromDexTitle.length > 0) return fromDexTitle;
+    }
+
     const seeSlug = mangaseeSlug(json.chapter?.md_comics?.links2);
-    if (seeSlug && chap) {
-      const fromWeeb = await pagesFromWeebCentral(seeSlug, chap);
-      if (fromWeeb.length > 0) return fromWeeb;
+    if (chap) {
+      const weebQuery = seeSlug || title;
+      if (weebQuery) {
+        const fromWeeb = await pagesFromEngineTitle(
+          weebCentralEngine,
+          weebQuery,
+          chap,
+        );
+        if (fromWeeb.length > 0) return fromWeeb;
+      }
     }
 
     const fallback = await pagesFromOriginalSite(json);

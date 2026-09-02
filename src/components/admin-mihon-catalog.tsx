@@ -12,6 +12,7 @@ import { addMihonSources, type SourceActionState } from "@/lib/actions/sources";
 import {
   languageLabel,
   mihonCatalogHref,
+  type MihonCatalogSort,
   type MihonCatalogSource,
   type MihonCatalogStatus,
 } from "@/lib/sources/mihon-catalog";
@@ -23,12 +24,14 @@ export function AdminMihonBrowseFilters({
   lang,
   hideAdult,
   status,
+  sort,
   languages,
 }: {
   query: string;
   lang: string;
   hideAdult: boolean;
   status: MihonCatalogStatus;
+  sort: MihonCatalogSort;
   languages: string[];
 }) {
   const router = useRouter();
@@ -39,6 +42,7 @@ export function AdminMihonBrowseFilters({
     lang?: string;
     hideAdult?: boolean;
     status?: MihonCatalogStatus;
+    sort?: MihonCatalogSort;
   }) {
     startTransition(() => {
       router.push(
@@ -47,6 +51,7 @@ export function AdminMihonBrowseFilters({
           lang: next.lang ?? lang,
           hideAdult: next.hideAdult ?? hideAdult,
           status: next.status ?? status,
+          sort: next.sort ?? sort,
         }),
       );
     });
@@ -114,6 +119,24 @@ export function AdminMihonBrowseFilters({
           <option value="available">Not added yet</option>
           <option value="added">Already added</option>
           <option value="all">All sources</option>
+        </SelectField>
+        <SelectField
+          label="Sort"
+          value={sort}
+          disabled={pending}
+          onChange={(event) =>
+            push({
+              q: query || undefined,
+              lang,
+              hideAdult,
+              status,
+              sort: event.target.value as MihonCatalogSort,
+            })
+          }
+          selectClassName="min-w-[10rem]"
+        >
+          <option value="popular">Popular first</option>
+          <option value="name">Name</option>
         </SelectField>
         <label className="flex items-center gap-2 text-sm text-zinc-300">
           <input
@@ -251,6 +274,11 @@ export function AdminMihonSourcePicker({ sources }: { sources: MihonBrowseRow[] 
                   {source.hasImporter && (
                     <Badge className="border-violet-900/50 bg-violet-950/50 text-violet-300">
                       Importer
+                    </Badge>
+                  )}
+                  {source.popularRank != null && source.popularRank <= 12 && (
+                    <Badge className="border-amber-900/50 bg-amber-950/40 text-amber-300">
+                      Popular
                     </Badge>
                   )}
                   {source.isAdult && (

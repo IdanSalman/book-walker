@@ -15,7 +15,9 @@ import {
   mihonCatalogLanguages,
   MIHON_CATALOG_PAGE_SIZE,
   parseMihonLang,
+  parseMihonSort,
   parseMihonStatus,
+  popularUnconfiguredSources,
 } from "@/lib/sources/mihon-catalog";
 
 export default async function AdminMihonBrowsePage({
@@ -27,6 +29,7 @@ export default async function AdminMihonBrowsePage({
     lang?: string;
     hideAdult?: string;
     status?: string;
+    sort?: string;
   }>;
 }) {
   const {
@@ -35,12 +38,14 @@ export default async function AdminMihonBrowsePage({
     lang: langParam,
     hideAdult: hideAdultParam,
     status: statusParam,
+    sort: sortParam,
   } = await searchParams;
 
   const query = q?.trim() ?? "";
   const lang = parseMihonLang(langParam);
   const hideAdult = hideAdultParam === "1" || hideAdultParam === "true";
   const status = parseMihonStatus(statusParam);
+  const sort = parseMihonSort(sortParam);
   const page = parseAdminPage(pageParam);
 
   let catalogError: string | null = null;
@@ -60,9 +65,16 @@ export default async function AdminMihonBrowsePage({
   const languages = mihonCatalogLanguages(catalog);
   const filtered = filterMihonCatalog(
     catalog,
-    { q: query || undefined, lang, hideAdult, status, page },
+    { q: query || undefined, lang, hideAdult, status, sort, page },
     configured,
   );
+  const suggestions =
+    !query && status === "available"
+      ? popularUnconfiguredSources(catalog, configured).map((source) => ({
+          ...source,
+          added: false,
+        }))
+      : [];
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / MIHON_CATALOG_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -77,6 +89,7 @@ export default async function AdminMihonBrowsePage({
     lang,
     hideAdult,
     status,
+    sort,
   };
 
   return (
@@ -92,9 +105,10 @@ export default async function AdminMihonBrowsePage({
           Browse Mihon sources
         </h1>
         <p className="mt-1 text-zinc-400">
-          The Keiyoushi catalog Mihon uses. Add a site to track it in Book Walker.
-          Search, import, and in-app reading stay limited to sources that already
-          have an importer.
+          Popular English sources from the Keiyoushi catalog that are not in
+          Book Walker yet. Adding a site enables search, import, and in-app
+          reading through the generic scraper (or a dedicated engine when we
+          have one).
         </p>
       </div>
 
@@ -117,10 +131,33 @@ export default async function AdminMihonBrowsePage({
             lang={lang}
             hideAdult={hideAdult}
             status={status}
+            sort={sort}
             languages={languages}
           />
 
-          <AdminMihonSourcePicker sources={rows} />
+          {suggestions.length > 0 && (
+            <section className="space-y-3">
+              <div>
+                <h2 className="text-lg font-semibold text-zinc-100">
+                  Suggested additions
+                </h2>
+                <p className="text-sm text-zinc-500">
+                  Widely used English sources that are not configured yet. Pick
+                  the ones that look relevant, then add them.
+                </p>
+              </div>
+              <AdminMihonSourcePicker sources={suggestions} />
+            </section>
+          )}
+
+          <section className="space-y-3">
+            {suggestions.length > 0 && (
+              <h2 className="text-lg font-semibold text-zinc-100">
+                Full catalog
+              </h2>
+            )}
+            <AdminMihonSourcePicker sources={rows} />
+          </section>
 
           {totalPages > 1 && (
             <div className="flex flex-wrap items-center justify-between gap-4 border-t border-zinc-800 pt-4">

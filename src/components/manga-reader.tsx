@@ -301,6 +301,7 @@ export function MangaReader({
   const [elapsedMs, setElapsedMs] = useState(0);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const ignoreClick = useRef(false);
+  const progressAbortRef = useRef<AbortController | null>(null);
   const completedRef = useRef(false);
   const furthestPageRef = useRef(0);
   const furthestStripRef = useRef(0);
@@ -523,6 +524,9 @@ export function MangaReader({
       }
       // Route handler, not a Server Action: progress must not re-render the
       // reader page (that shows Next.js “Rendering” and re-fetches chapters).
+      progressAbortRef.current?.abort();
+      const controller = new AbortController();
+      progressAbortRef.current = controller;
       void fetch("/api/reader/progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -534,6 +538,10 @@ export function MangaReader({
           progressPage,
           pageBased,
         }),
+        signal: controller.signal,
+        keepalive: true,
+      }).catch(() => {
+        // Best-effort; a dropped DB/network must not overlay the reader.
       });
     },
     [bookId, chapterIndex, chapters, pageIndex, pages.length, progressMode],

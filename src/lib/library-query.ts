@@ -5,6 +5,7 @@ import {
   UNCATEGORIZED_SLUG,
 } from "@/lib/library-categories";
 import { hideAdultBookFilter } from "@/lib/adult-content";
+import { containsTextVariants } from "@/lib/contains-text";
 import { hideReadUserBookFilter } from "@/lib/hide-read-titles";
 import { parsePublicationFilter } from "@/lib/publication";
 
@@ -63,6 +64,7 @@ export function buildLibraryWhere(
   const publicationStatus = parsePublicationFilter(params.publication);
   const collection = params.collection?.trim() || undefined;
   const query = params.q?.trim();
+  const queryVariants = query ? containsTextVariants(query) : [];
 
   const collectionFilter: Prisma.UserBookWhereInput =
     collection === UNCATEGORIZED_SLUG
@@ -79,14 +81,14 @@ export function buildLibraryWhere(
     ...hideAdultBookFilter(Boolean(params.hideAdult)),
     ...(categoryFilter ? { category: categoryFilter } : {}),
     ...(publicationStatus ? { publicationStatus } : {}),
-    ...(query
+    ...(queryVariants.length
       ? {
-          OR: [
-            { title: { contains: query, mode: "insensitive" as const } },
-            { artist: { contains: query, mode: "insensitive" as const } },
-            { author: { contains: query, mode: "insensitive" as const } },
-            { sourceName: { contains: query, mode: "insensitive" as const } },
-          ],
+          OR: queryVariants.flatMap((variant) => [
+            { title: { contains: variant, mode: "insensitive" as const } },
+            { artist: { contains: variant, mode: "insensitive" as const } },
+            { author: { contains: variant, mode: "insensitive" as const } },
+            { sourceName: { contains: variant, mode: "insensitive" as const } },
+          ]),
         }
       : {}),
   };

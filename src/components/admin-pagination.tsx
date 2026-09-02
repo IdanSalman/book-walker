@@ -10,7 +10,7 @@ type AdminPaginationProps = {
   total: number;
   page: number;
   q?: string;
-  hideAdult?: boolean;
+  adultOnly?: boolean;
   genre?: string;
   sort?: string;
   corruptedCovers?: boolean;
@@ -21,7 +21,7 @@ export function AdminPagination({
   total,
   page,
   q,
-  hideAdult,
+  adultOnly,
   genre,
   sort,
   corruptedCovers,
@@ -35,7 +35,7 @@ export function AdminPagination({
   const end = Math.min(page * ADMIN_PAGE_SIZE, total);
   const hrefParams = {
     q,
-    hideAdult,
+    adultOnly,
     genre,
     sort,
     corruptedCovers,

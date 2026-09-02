@@ -31,19 +31,24 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid progress" }, { status: 400 });
   }
 
-  const result = await saveReaderProgress(session.user.id, {
-    bookId,
-    chapterIndex: Number(chapterIndex),
-    chapterCount: Number(chapterCount),
-    completedChapter: completedChapter === true,
-    progressPage: Number(progressPage),
-    pageBased: pageBased === true,
-  });
+  try {
+    const result = await saveReaderProgress(session.user.id, {
+      bookId,
+      chapterIndex: Number(chapterIndex),
+      chapterCount: Number(chapterCount),
+      completedChapter: completedChapter === true,
+      progressPage: Number(progressPage),
+      pageBased: pageBased === true,
+    });
 
-  if (result.error) {
-    const status = result.error === "This title is not in your library" ? 404 : 400;
-    return Response.json({ error: result.error }, { status });
+    if (result.error) {
+      const status = result.error === "This title is not in your library" ? 404 : 400;
+      return Response.json({ error: result.error }, { status });
+    }
+
+    return Response.json({ ok: true });
+  } catch (error) {
+    console.error("[reader] failed to save progress", error);
+    return Response.json({ error: "Progress could not be saved" }, { status: 503 });
   }
-
-  return Response.json({ ok: true });
 }

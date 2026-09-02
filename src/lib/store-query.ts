@@ -7,6 +7,7 @@ import {
 } from "@/lib/adult-content";
 import { categoryFromSlug } from "@/lib/categories";
 import { parsePublicationFilter } from "@/lib/publication";
+import { containsTextVariants } from "@/lib/contains-text";
 import { hideReadStoreBookFilter } from "@/lib/hide-read-titles";
 import { prisma } from "@/lib/prisma";
 /** Hide books with broken PNG covers from the public store. */
@@ -66,6 +67,7 @@ export function buildStoreWhere(
   const categoryFilter: BookCategory | undefined = selected?.value;
   const genre = params.genre?.trim();
   const query = params.q?.trim();
+  const queryVariants = query ? containsTextVariants(query) : [];
   const contentFilter = parseStoreContentFilter(params.content, params.hideAdult);
   const publicationStatus = parsePublicationFilter(params.publication);
 
@@ -73,14 +75,14 @@ export function buildStoreWhere(
     ...(categoryFilter ? { category: categoryFilter } : {}),
     ...(genre ? { genres: { has: genre } } : {}),
     ...(publicationStatus ? { publicationStatus } : {}),
-    ...(query
+    ...(queryVariants.length
       ? {
-          OR: [
-            { title: { contains: query, mode: "insensitive" } },
-            { artist: { contains: query, mode: "insensitive" } },
-            { author: { contains: query, mode: "insensitive" } },
-            { sourceName: { contains: query, mode: "insensitive" } },
-          ],
+          OR: queryVariants.flatMap((variant) => [
+            { title: { contains: variant, mode: "insensitive" as const } },
+            { artist: { contains: variant, mode: "insensitive" as const } },
+            { author: { contains: variant, mode: "insensitive" as const } },
+            { sourceName: { contains: variant, mode: "insensitive" as const } },
+          ]),
         }
       : {}),
     ...storeContentFilter(contentFilter),

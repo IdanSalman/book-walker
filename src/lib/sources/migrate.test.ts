@@ -26,10 +26,25 @@ function hit(title: string, url: string): CatalogCandidate {
 
 describe("migration search hits", () => {
   it("scores exact and partial titles", () => {
-    assert.equal(candidateMatchScore("Dune", "Dune"), 3);
-    assert.equal(candidateMatchScore("Dune", "Dune Messiah"), 2);
-    assert.equal(candidateMatchScore("Dune", "Children of Dune"), 1);
+    assert.equal(candidateMatchScore("Dune", "Dune"), 4);
+    assert.equal(candidateMatchScore("Dune", "Dune Messiah"), 3);
+    assert.equal(candidateMatchScore("Dune", "Children of Dune"), 2);
     assert.equal(candidateMatchScore("Dune", "Pride and Prejudice"), 0);
+  });
+
+  it("matches shared significant words when the full title is not a substring", () => {
+    assert.ok(
+      candidateMatchScore(
+        "Omniscient Reader Viewpoint",
+        "Omniscient Reader's Viewpoint",
+      ) > 0,
+    );
+    assert.ok(
+      candidateMatchScore(
+        "High School Baseball Tycoon",
+        "High School Baseball Tycoon Rise of a Legend",
+      ) > 0,
+    );
   });
 
   it("drops unrelated popular listings and the current URL", () => {

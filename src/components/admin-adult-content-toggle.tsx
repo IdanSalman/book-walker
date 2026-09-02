@@ -6,9 +6,9 @@ import { useTransition } from "react";
 import { AnimatedSwitch } from "@/components/animated-switch";
 
 export function AdminAdultContentToggle({
-  hideAdult,
+  adultOnly,
 }: {
-  hideAdult: boolean;
+  adultOnly: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -19,17 +19,23 @@ export function AdminAdultContentToggle({
       <div className="min-w-0">
         <p className="text-sm font-medium text-zinc-100">Adult content</p>
         <p className="text-xs text-zinc-500">
-          {hideAdult ? "Hidden from catalog" : "Shown in catalog"}
+          {adultOnly ? "Showing only adult titles" : "Adult titles hidden"}
         </p>
       </div>
       <AnimatedSwitch
-        checked={!hideAdult}
+        checked={adultOnly}
         disabled={pending}
-        onCheckedChange={(showAdult) => {
+        aria-label={
+          adultOnly
+            ? "Showing only adult titles — click to hide them"
+            : "Adult titles hidden — click to show only adult titles"
+        }
+        onCheckedChange={(showOnlyAdult) => {
           startTransition(() => {
             const params = new URLSearchParams(searchParams.toString());
-            if (showAdult) params.delete("hideAdult");
-            else params.set("hideAdult", "1");
+            if (showOnlyAdult) params.set("adult", "only");
+            else params.delete("adult");
+            params.delete("hideAdult");
             params.delete("page");
             const query = params.toString();
             router.push(query ? `/admin/books?${query}` : "/admin/books");

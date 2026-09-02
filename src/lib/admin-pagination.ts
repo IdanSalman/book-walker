@@ -12,7 +12,7 @@ export function adminPageCount(total: number): number {
 export function adminBooksHref(params: {
   page?: number;
   q?: string;
-  hideAdult?: boolean;
+  adultOnly?: boolean;
   genre?: string;
   sort?: string;
   corruptedCovers?: boolean;
@@ -21,7 +21,7 @@ export function adminBooksHref(params: {
 }): string {
   const search = new URLSearchParams();
   if (params.q) search.set("q", params.q);
-  if (params.hideAdult) search.set("hideAdult", "1");
+  if (params.adultOnly) search.set("adult", "only");
   if (params.genre) search.set("genre", params.genre);
   if (params.source) search.set("source", params.source);
   if (params.corruptedCovers) search.set("corruptedCovers", "1");

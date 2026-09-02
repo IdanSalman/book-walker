@@ -4,8 +4,28 @@ import { BookOpen } from "lucide-react";
 import { SignInButtons } from "@/components/sign-in-buttons";
 import { getConfiguredAuthProviders } from "@/lib/auth-providers";
 
-export default function LoginPage() {
+function signInErrorMessage(error: string | undefined) {
+  if (!error) return null;
+  if (error === "Configuration") {
+    return "Google sign-in could not be started. Check your connection and try again.";
+  }
+  if (error === "AccessDenied") {
+    return "Sign-in was cancelled or denied.";
+  }
+  if (error === "OAuthCallback" || error === "OAuthSignin") {
+    return "Google returned an error during sign-in. Try again.";
+  }
+  return "Sign-in failed. Try again.";
+}
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const providers = getConfiguredAuthProviders();
+  const { error } = await searchParams;
+  const errorMessage = signInErrorMessage(error);
 
   return (
     <main className="flex flex-1 items-center justify-center px-4 py-16">
@@ -19,6 +39,11 @@ export default function LoginPage() {
             Access your personal Book Walker library.
           </p>
         </div>
+        {errorMessage ? (
+          <p className="rounded-md border border-red-900/60 bg-red-950/40 px-3 py-3 text-sm text-red-200">
+            {errorMessage}
+          </p>
+        ) : null}
         <SignInButtons providers={providers} />
         <p className="text-center text-sm text-zinc-500">
           <Link href="/" className="text-violet-400 hover:text-violet-300">

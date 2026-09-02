@@ -54,37 +54,118 @@ export type MihonCatalogSource = {
   isAdult: boolean;
   hasImporter: boolean;
   suggestedKey: string;
+  popularRank: number | null;
 };
 
 export type MihonCatalogStatus = "available" | "added" | "all";
+export type MihonCatalogSort = "popular" | "name";
 
 export type MihonCatalogQuery = {
   q?: string;
   lang?: string;
   hideAdult?: boolean;
   status?: MihonCatalogStatus;
+  sort?: MihonCatalogSort;
   page: number;
 };
 
 type IndexSource = {
   id?: string;
   name?: string;
+  lang?: string;
   language?: string;
+  baseUrl?: string;
   homeUrl?: string;
 };
 
 type IndexExtension = {
   name?: string;
+  pkg?: string;
   packageName?: string;
+  version?: string;
   versionName?: string;
+  nsfw?: number;
   contentWarning?: string;
   resources?: { iconUrl?: string };
   sources?: IndexSource[];
 };
 
-type IndexPayload = {
-  extensionList?: { extensions?: IndexExtension[] };
-};
+const ICON_BASE =
+  "https://raw.githubusercontent.com/keiyoushi/extensions/repo/icon";
+
+const SKIP_EXTENSION = /outdated app|update to mihon|^local source$|example source/i;
+
+/** Widely used English Mihon sources, roughly by how often they cover library titles. */
+const POPULAR_ENGLISH: { key: string; name: string }[] = [
+  { key: "mangadex", name: "mangadex" },
+  { key: "comick", name: "comick" },
+  { key: "weebcentral", name: "weeb central" },
+  { key: "asurascans", name: "asura scans" },
+  { key: "manganato", name: "manganato" },
+  { key: "mangakakalot", name: "mangakakalot" },
+  { key: "nelomanga", name: "nelomanga" },
+  { key: "natomanga", name: "natomanga" },
+  { key: "toonily", name: "toonily" },
+  { key: "bato", name: "bato.to" },
+  { key: "mangafire", name: "mangafire" },
+  { key: "mangapark", name: "manga park" },
+  { key: "mangabuddy", name: "manga buddy" },
+  { key: "mangakatana", name: "manga katana" },
+  { key: "webtoons", name: "webtoons" },
+  { key: "mangaplus", name: "manga plus" },
+  { key: "flamecomics", name: "flame comics" },
+  { key: "hivescans", name: "hive scans" },
+  { key: "reaperscans", name: "reaper scans" },
+  { key: "tcbscans", name: "tcb scans" },
+  { key: "likemanga", name: "like manga" },
+  { key: "mangahub", name: "mangahub" },
+  { key: "mangaread", name: "mangaread" },
+  { key: "rizzfables", name: "rizzfables" },
+  { key: "templescans", name: "temple scans" },
+  { key: "luminousscans", name: "luminous scans" },
+  { key: "drakecomic", name: "drake scans" },
+  { key: "nightscans", name: "night scans" },
+];
+
+function extensionsFromPayload(payload: unknown): IndexExtension[] {
+  if (Array.isArray(payload)) return payload as IndexExtension[];
+  if (payload && typeof payload === "object" && "extensionList" in payload) {
+    const list = (payload as { extensionList?: { extensions?: IndexExtension[] } })
+      .extensionList?.extensions;
+    return list ?? [];
+  }
+  return [];
+}
+
+function extensionIcon(packageName: string, explicit?: string): string | null {
+  const fromIndex = explicit?.trim();
+  if (fromIndex) return fromIndex;
+  if (!packageName) return null;
+  return `${ICON_BASE}/${packageName}.png`;
+}
+
+function compactName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function popularRankFor(
+  name: string,
+  suggestedKey: string,
+  packageName: string,
+): number | null {
+  const nameCompact = compactName(name);
+  const keyL = suggestedKey.toLowerCase();
+  const pkgL = packageName.toLowerCase();
+  for (let i = 0; i < POPULAR_ENGLISH.length; i++) {
+    const item = POPULAR_ENGLISH[i];
+    const itemCompact = compactName(item.name);
+    if (keyL === item.key) return i + 1;
+    if (nameCompact === itemCompact) return i + 1;
+    const pkgTail = pkgL.split(".").pop() ?? "";
+    if (pkgTail === item.key || pkgL.endsWith(`.${item.key}`)) return i + 1;
+  }
+  return null;
+}
 
 export type ConfiguredSourceRef = {
   key: string;
@@ -109,12 +190,17 @@ export function parseMihonLang(value: string | undefined): string {
   return lang;
 }
 
+export function parseMihonSort(value: string | undefined): MihonCatalogSort {
+  return value === "name" ? "name" : "popular";
+}
+
 export function mihonCatalogHref(params: {
   page?: number;
   q?: string;
   lang?: string;
   hideAdult?: boolean;
   status?: MihonCatalogStatus;
+  sort?: MihonCatalogSort;
 }): string {
   const search = new URLSearchParams();
   if (params.q) search.set("q", params.q);
@@ -123,6 +209,7 @@ export function mihonCatalogHref(params: {
   if (params.status && params.status !== "available") {
     search.set("status", params.status);
   }
+  if (params.sort && params.sort !== "popular") search.set("sort", params.sort);
   if (params.page && params.page > 1) search.set("page", String(params.page));
   const query = search.toString();
   return query ? `/admin/sources/browse?${query}` : "/admin/sources/browse";
@@ -146,10 +233,10 @@ function pickLanguage(languages: string[]): string {
   return [...languages].sort()[0] ?? "en";
 }
 
-function isAdultWarning(warning: string | undefined): boolean {
-  return (
-    warning === "CONTENT_WARNING_NSFW" || warning === "CONTENT_WARNING_MIXED"
-  );
+function isAdultExtension(extension: IndexExtension): boolean {
+  if (extension.contentWarning === "CONTENT_WARNING_MIXED") return false;
+  if (extension.contentWarning === "CONTENT_WARNING_NSFW") return true;
+  return extension.nsfw === 1;
 }
 
 function matchingBuiltIn(name: string, key: string, baseUrl: string) {
@@ -167,19 +254,32 @@ function sourceHasImporter(name: string, key: string, baseUrl: string): boolean 
   return preset ? canImportFromSource(preset) : false;
 }
 
-export function flattenMihonIndex(payload: IndexPayload): MihonCatalogSource[] {
+export function flattenMihonIndex(payload: unknown): MihonCatalogSource[] {
   const grouped = new Map<string, MihonCatalogSource>();
 
-  for (const extension of payload.extensionList?.extensions ?? []) {
-    const packageName = extension.packageName?.trim();
+  for (const extension of extensionsFromPayload(payload)) {
+    const packageName =
+      extension.pkg?.trim() || extension.packageName?.trim() || "";
     const extensionName = extension.name?.trim();
     if (!packageName || !extensionName) continue;
+    if (SKIP_EXTENSION.test(extensionName)) continue;
+
+    const versionName =
+      extension.version?.trim() ||
+      extension.versionName?.trim() ||
+      "unknown";
+    const iconUrl = extensionIcon(
+      packageName,
+      extension.resources?.iconUrl,
+    );
+    const adult = isAdultExtension(extension);
 
     for (const source of extension.sources ?? []) {
       const name = source.name?.trim();
-      const baseUrl = source.homeUrl?.trim();
-      const language = source.language?.trim().toLowerCase();
+      const baseUrl = source.baseUrl?.trim() || source.homeUrl?.trim();
+      const language = (source.lang ?? source.language)?.trim().toLowerCase();
       if (!name || !baseUrl || !language) continue;
+      if (SKIP_EXTENSION.test(name)) continue;
       if (!/^https?:\/\//i.test(baseUrl)) continue;
 
       const id = catalogId(packageName, name, baseUrl);
@@ -200,21 +300,33 @@ export function flattenMihonIndex(payload: IndexPayload): MihonCatalogSource[] {
         name,
         packageName,
         extensionName,
-        versionName: extension.versionName?.trim() || "unknown",
+        versionName,
         language: pickLanguage([language]),
         languages: [language],
         baseUrl,
-        iconUrl: extension.resources?.iconUrl?.trim() || null,
-        isAdult: isAdultWarning(extension.contentWarning),
+        iconUrl,
+        isAdult: adult,
         hasImporter: sourceHasImporter(name, suggestedKey, baseUrl),
         suggestedKey,
+        popularRank: popularRankFor(name, suggestedKey, packageName),
       });
     }
   }
 
-  return [...grouped.values()].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
-  );
+  return [...grouped.values()].sort(compareMihonSources);
+}
+
+function compareMihonSources(
+  a: MihonCatalogSource,
+  b: MihonCatalogSource,
+  sort: MihonCatalogSort = "popular",
+): number {
+  if (sort === "popular") {
+    const rankA = a.popularRank ?? Number.POSITIVE_INFINITY;
+    const rankB = b.popularRank ?? Number.POSITIVE_INFINITY;
+    if (rankA !== rankB) return rankA - rankB;
+  }
+  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
 }
 
 export async function fetchMihonCatalog(): Promise<MihonCatalogSource[]> {
@@ -225,15 +337,16 @@ export async function fetchMihonCatalog(): Promise<MihonCatalogSource[]> {
       const res = await fetch(url, {
         headers: { Accept: "application/json" },
         next: { revalidate: REVALIDATE_SECONDS },
+        signal: AbortSignal.timeout(45_000),
       });
       if (!res.ok) {
         errors.push(`${url}: HTTP ${res.status}`);
         continue;
       }
-      const payload = (await res.json()) as IndexPayload;
+      const payload: unknown = await res.json();
       const sources = flattenMihonIndex(payload);
-      if (sources.length === 0) {
-        errors.push(`${url}: empty catalog`);
+      if (sources.length < 10) {
+        errors.push(`${url}: stub catalog (${sources.length} sources)`);
         continue;
       }
       return sources;
@@ -270,7 +383,7 @@ export function filterMihonCatalog(
   const needle = query.q?.trim().toLowerCase();
   const lang = query.lang ?? "en";
 
-  return sources.filter((source) => {
+  const matched = sources.filter((source) => {
     const added = isMihonSourceConfigured(source, configured);
     if (query.status === "available" && added) return false;
     if (query.status === "added" && !added) return false;
@@ -289,6 +402,26 @@ export function filterMihonCatalog(
       source.packageName.toLowerCase().includes(needle)
     );
   });
+  const sort = query.sort ?? "popular";
+  return matched.sort((a, b) => compareMihonSources(a, b, sort));
+}
+
+export function popularUnconfiguredSources(
+  sources: MihonCatalogSource[],
+  configured: ConfiguredSourceRef[],
+  limit = 24,
+): MihonCatalogSource[] {
+  return sources
+    .filter((source) => {
+      if (isMihonSourceConfigured(source, configured)) return false;
+      if (source.isAdult) return false;
+      if (source.popularRank == null) return false;
+      return (
+        source.languages.includes("en") || source.languages.includes("all")
+      );
+    })
+    .sort((a, b) => compareMihonSources(a, b, "popular"))
+    .slice(0, limit);
 }
 
 export function mihonCatalogLanguages(

@@ -27,7 +27,10 @@ import {
   pageCountLabel,
   parsePublicationFilter,
 } from "@/lib/publication";
-import { hideAdultBookFilter } from "@/lib/adult-content";
+import {
+  catalogAdultBookFilter,
+  parseCatalogAdultFilter,
+} from "@/lib/adult-content";
 import { prisma } from "@/lib/prisma";
 import {
   fetchStoreBooks,
@@ -41,7 +44,7 @@ export default async function AdminBooksPage({
   searchParams: Promise<{
     page?: string;
     q?: string;
-    hideAdult?: string;
+    adult?: string;
     genre?: string;
     sort?: string;
     corruptedCovers?: string;
@@ -52,7 +55,7 @@ export default async function AdminBooksPage({
   const {
     page: pageParam,
     q,
-    hideAdult: hideAdultParam,
+    adult: adultParam,
     genre: genreParam,
     sort: sortParam,
     corruptedCovers: corruptedCoversParam,
@@ -60,7 +63,8 @@ export default async function AdminBooksPage({
     source: sourceParam,
   } = await searchParams;
   const query = q?.trim() ?? "";
-  const hideAdult = hideAdultParam === "1" || hideAdultParam === "true";
+  const adultFilter = parseCatalogAdultFilter(adultParam);
+  const adultOnly = adultFilter === "only";
   const showCorrupted =
     corruptedCoversParam === "1" || corruptedCoversParam === "true";
   const genre = genreParam?.trim() || undefined;
@@ -69,7 +73,7 @@ export default async function AdminBooksPage({
   const publication = parsePublicationFilter(publicationParam);
 
   const where: Prisma.BookWhereInput = {
-    ...hideAdultBookFilter(hideAdult),
+    ...catalogAdultBookFilter(adultFilter),
     ...(showCorrupted ? { coverCorrupted: true } : {}),
     ...(genre ? { genres: { has: genre } } : {}),
     ...(publication ? { publicationStatus: publication } : {}),
@@ -110,7 +114,7 @@ export default async function AdminBooksPage({
           <h1 className="text-3xl font-bold text-zinc-50">Catalog</h1>
           <p className="mt-1 text-zinc-400">
             {total.toLocaleString()} book{total === 1 ? "" : "s"}
-            {showCorrupted ? " with corrupted covers" : " in the store"}
+            {showCorrupted ? " with corrupted covers" : adultOnly ? " marked adult" : " (adult titles hidden)"}
             {source ? ` from ${source}` : ""}
             {genre ? ` in genre “${genre}”` : ""}
             {publication ? ` · ${PUBLICATION_STATUS_LABELS[publication].toLowerCase()}` : ""}.
@@ -133,7 +137,11 @@ export default async function AdminBooksPage({
             Filtered to the <strong className="font-medium">{source}</strong> source.
           </span>
           <Link
-            href={adminBooksHref({ q: query || undefined, sort })}
+            href={adminBooksHref({
+              q: query || undefined,
+              sort,
+              adultOnly: adultOnly || undefined,
+            })}
             className="text-violet-300 underline-offset-2 hover:underline"
           >
             Clear
@@ -146,7 +154,7 @@ export default async function AdminBooksPage({
           <AdminBookSearch defaultValue={query} />
         </Suspense>
         <Suspense>
-          <AdminAdultContentToggle hideAdult={hideAdult} />
+          <AdminAdultContentToggle adultOnly={adultOnly} />
         </Suspense>
         <Suspense>
           <AdminCorruptedCoversToggle showCorrupted={showCorrupted} />
@@ -173,13 +181,13 @@ export default async function AdminBooksPage({
               ? "No corrupted covers flagged yet. Scan a page of books to detect broken PNGs."
               : query
                 ? "No books match your search."
-                : hideAdult
-                  ? "No non-adult books in the catalog."
+                : adultOnly
+                  ? "No adult books in the catalog."
                   : genre
                     ? `No books in genre “${genre}”.`
-                    : "The catalog is empty."}
+                    : "No non-adult books in the catalog."}
           </p>
-          {!query && !hideAdult && !genre && !showCorrupted && (
+          {!query && !adultOnly && !genre && !showCorrupted && (
             <Link
               href="/admin/books/new"
               className="mt-2 inline-block text-sm text-violet-400 hover:text-violet-300"
@@ -294,7 +302,7 @@ export default async function AdminBooksPage({
             total={total}
             page={page}
             q={query || undefined}
-            hideAdult={hideAdult || undefined}
+            adultOnly={adultOnly || undefined}
             genre={genre}
             sort={sort}
             corruptedCovers={showCorrupted || undefined}
