@@ -107,6 +107,9 @@ export const authConfig = {
         session.user.onboardingComplete = Boolean(token.onboardingComplete);
         session.user.hideAdultContent = Boolean(token.hideAdultContent ?? true);
         session.user.hideReadTitles = Boolean(token.hideReadTitles);
+        session.user.showLibraryAdminControls = Boolean(
+          token.showLibraryAdminControls,
+        );
         session.user.defaultReadingMode =
           typeof token.defaultReadingMode === "string"
             ? token.defaultReadingMode

@@ -6,7 +6,15 @@ import {
 } from "@/lib/library-categories";
 import { hideAdultBookFilter } from "@/lib/adult-content";
 import { containsTextVariants } from "@/lib/contains-text";
-import { hideReadUserBookFilter } from "@/lib/hide-read-titles";
+import {
+  getCaughtUpBookIds,
+  hideReadUserBookFilter,
+} from "@/lib/hide-read-titles";
+import {
+  LIBRARY_PAGE_SIZE,
+  libraryPageCount,
+} from "@/lib/library-pagination";
+import { prisma } from "@/lib/prisma";
 import { parsePublicationFilter } from "@/lib/publication";
 
 export type LibrarySort =
@@ -167,6 +175,61 @@ export const LIBRARY_USER_BOOK_SELECT = {
     },
   },
 } satisfies Prisma.UserBookSelect;
+
+export type LibraryUserBook = Prisma.UserBookGetPayload<{
+  select: typeof LIBRARY_USER_BOOK_SELECT;
+}>;
+
+export type LibraryPageResult = {
+  items: LibraryUserBook[];
+  total: number;
+  page: number;
+  pageCount: number;
+  hasMore: boolean;
+};
+
+export async function fetchLibraryPage(options: {
+  userId: string;
+  hideAdult: boolean;
+  hideRead: boolean;
+  filterParams: LibraryHrefParams;
+  sort: LibrarySort;
+  page: number;
+}): Promise<LibraryPageResult> {
+  const caughtUpBookIds = options.hideRead
+    ? await getCaughtUpBookIds(options.userId)
+    : [];
+  const where = buildLibraryWhere(options.userId, {
+    collection: options.filterParams.collection,
+    category: options.filterParams.category,
+    status: options.filterParams.status,
+    publication: options.filterParams.publication,
+    q: options.filterParams.q,
+    hideAdult: options.hideAdult,
+    hideRead: options.hideRead,
+    caughtUpBookIds,
+  });
+
+  const [total, items] = await Promise.all([
+    prisma.userBook.count({ where }),
+    prisma.userBook.findMany({
+      where,
+      select: LIBRARY_USER_BOOK_SELECT,
+      orderBy: libraryOrderBy(options.sort),
+      skip: (options.page - 1) * LIBRARY_PAGE_SIZE,
+      take: LIBRARY_PAGE_SIZE,
+    }),
+  ]);
+
+  const pageCount = libraryPageCount(total);
+  return {
+    items,
+    total,
+    page: Math.min(options.page, pageCount),
+    pageCount,
+    hasMore: options.page < pageCount,
+  };
+}
 
 export function libraryPageHref(params: LibraryHrefParams): string {
   const search = new URLSearchParams();

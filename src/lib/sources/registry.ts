@@ -92,6 +92,22 @@ export const BUILT_IN_SOURCES: BuiltInSource[] = [
       "https://api.comick.dev/v1.0/search?limit=1&page=1&sort=user_follow_count&tachiyomi=true",
   },
   {
+    key: "mangageko",
+    name: "MangaGeko",
+    baseUrl: "https://www.mgeko.cc",
+    kind: "SCRAPER",
+    family: "COMIC",
+    language: "en",
+    supportsSearch: true,
+    supportsMetadata: false,
+    supportsReading: true,
+    isAdultSource: false,
+    priority: 84,
+    notes:
+      "Mihon MangaGeko source. Title search uses /search/ (full catalog). Browse and Latest use /browse-comics/, which is a smaller index on the site.",
+    healthPath: "https://www.mgeko.cc/search/?search=a",
+  },
+  {
     key: "toonily",
     name: "Toonily",
     baseUrl: "https://toonily.com",
@@ -384,7 +400,8 @@ export function canImportFromSource(source: {
     source.key === "mangadex" ||
     source.key === "asurascans" ||
     source.key === "weebcentral" ||
-    source.key === "comick"
+    source.key === "comick" ||
+    source.key === "mangageko"
   ) {
     return true;
   }

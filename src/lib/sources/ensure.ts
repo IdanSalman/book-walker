@@ -14,10 +14,11 @@ export async function ensureBuiltInSources(): Promise<string[]> {
     await prisma.fetchSource.createMany({ data: missing.map(builtInSourceData) });
   }
 
-  const toonily = builtInSource("toonily");
-  if (toonily && keys.has("toonily")) {
+  for (const key of ["toonily", "mangageko"] as const) {
+    const preset = builtInSource(key);
+    if (!preset || !keys.has(key)) continue;
     const row = await prisma.fetchSource.findUnique({
-      where: { key: "toonily" },
+      where: { key },
       select: {
         supportsSearch: true,
         supportsReading: true,
@@ -29,22 +30,22 @@ export async function ensureBuiltInSources(): Promise<string[]> {
     });
     if (
       row &&
-      (row.supportsSearch !== toonily.supportsSearch ||
-        row.supportsReading !== toonily.supportsReading ||
-        row.isAdultSource !== toonily.isAdultSource ||
-        row.priority !== toonily.priority ||
-        row.notes !== toonily.notes ||
-        row.baseUrl !== toonily.baseUrl)
+      (row.supportsSearch !== preset.supportsSearch ||
+        row.supportsReading !== preset.supportsReading ||
+        row.isAdultSource !== preset.isAdultSource ||
+        row.priority !== preset.priority ||
+        row.notes !== preset.notes ||
+        row.baseUrl !== preset.baseUrl)
     ) {
       await prisma.fetchSource.updateMany({
-        where: { key: "toonily" },
+        where: { key },
         data: {
-          baseUrl: toonily.baseUrl,
-          supportsSearch: toonily.supportsSearch,
-          supportsReading: toonily.supportsReading,
-          isAdultSource: toonily.isAdultSource,
-          priority: toonily.priority,
-          notes: toonily.notes,
+          baseUrl: preset.baseUrl,
+          supportsSearch: preset.supportsSearch,
+          supportsReading: preset.supportsReading,
+          isAdultSource: preset.isAdultSource,
+          priority: preset.priority,
+          notes: preset.notes,
         },
       });
     }

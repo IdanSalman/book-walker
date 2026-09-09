@@ -10,9 +10,11 @@ import type { CatalogConflict } from "@/lib/sources/import-title";
 export function AddToStoreButton({
   sourceKey,
   titleId,
+  onAdded,
 }: {
   sourceKey: string;
   titleId: string;
+  onAdded?: (bookId: string) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -40,6 +42,7 @@ export function AddToStoreButton({
         return;
       }
       setConflict(null);
+      if (result.bookId) onAdded?.(result.bookId);
       router.refresh();
     });
   }

@@ -24,6 +24,7 @@ async function syncUserToken(token: {
   onboardingComplete?: boolean;
   hideAdultContent?: boolean;
   hideReadTitles?: boolean;
+  showLibraryAdminControls?: boolean;
   defaultReadingMode?: string;
 }) {
   if (!token.id) return token;
@@ -37,6 +38,7 @@ async function syncUserToken(token: {
       onboardingComplete: true,
       hideAdultContent: true,
       hideReadTitles: true,
+      showLibraryAdminControls: true,
       defaultReadingMode: true,
     },
   });
@@ -56,6 +58,7 @@ async function syncUserToken(token: {
   token.onboardingComplete = dbUser.onboardingComplete;
   token.hideAdultContent = dbUser.hideAdultContent;
   token.hideReadTitles = dbUser.hideReadTitles;
+  token.showLibraryAdminControls = dbUser.showLibraryAdminControls;
   token.defaultReadingMode = dbUser.defaultReadingMode;
   return token;
 }
@@ -102,6 +105,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             ? token.hideAdultContent
             : true;
         session.user.hideReadTitles = Boolean(token.hideReadTitles);
+        session.user.showLibraryAdminControls = Boolean(
+          token.showLibraryAdminControls,
+        );
         session.user.defaultReadingMode =
           typeof token.defaultReadingMode === "string"
             ? token.defaultReadingMode

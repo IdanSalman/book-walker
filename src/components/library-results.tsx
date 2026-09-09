@@ -1,30 +1,20 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { AdminBookQuickControls } from "@/components/admin-book-panel";
-import { BookCard, BookCardSkeleton } from "@/components/book-card";
-import { LibraryPagination } from "@/components/library-pagination";
-import { Badge } from "@/components/ui/badge";
+import { BookCardSkeleton } from "@/components/book-card";
+import { LibraryBookGrid } from "@/components/library-book-grid";
 import {
-  buildLibraryWhere,
-  libraryOrderBy,
+  fetchLibraryPage,
   libraryPageHref,
-  LIBRARY_USER_BOOK_SELECT,
   type LibraryHrefParams,
   type LibrarySort,
 } from "@/lib/library-query";
-import {
-  LIBRARY_PAGE_SIZE,
-  libraryPageCount,
-  parseLibraryPage,
-} from "@/lib/library-pagination";
-import { getCaughtUpBookIds } from "@/lib/hide-read-titles";
-import { prisma } from "@/lib/prisma";
-import { isReadableInApp } from "@/lib/reader/access";
+import { parseLibraryPage } from "@/lib/library-pagination";
 
 type LibraryResultsProps = {
   userId: string;
-  isAdmin: boolean;
+  showEntryMeta: boolean;
+  showAdminControls: boolean;
   hideAdult: boolean;
   hideRead: boolean;
   librarySize: number;
@@ -41,7 +31,8 @@ type LibraryResultsProps = {
 
 export async function LibraryResults({
   userId,
-  isAdmin,
+  showEntryMeta,
+  showAdminControls,
   hideAdult,
   hideRead,
   librarySize,
@@ -55,36 +46,20 @@ export async function LibraryResults({
   publicationLabel,
   queryLabel,
 }: LibraryResultsProps) {
-  const caughtUpBookIds = hideRead ? await getCaughtUpBookIds(userId) : [];
-  const where = buildLibraryWhere(userId, {
-    collection: filterParams.collection,
-    category: filterParams.category,
-    status: filterParams.status,
-    publication: filterParams.publication,
-    q: filterParams.q,
-    hideAdult,
-    hideRead,
-    caughtUpBookIds,
-  });
-
   const requestedPage = parseLibraryPage(pageParam);
-  const [filteredCount, userBooks] = await Promise.all([
-    prisma.userBook.count({ where }),
-    prisma.userBook.findMany({
-      where,
-      select: LIBRARY_USER_BOOK_SELECT,
-      orderBy: libraryOrderBy(sort),
-      skip: (requestedPage - 1) * LIBRARY_PAGE_SIZE,
-      take: LIBRARY_PAGE_SIZE,
-    }),
-  ]);
+  const { items, total: filteredCount, page, pageCount, hasMore } =
+    await fetchLibraryPage({
+      userId,
+      hideAdult,
+      hideRead,
+      filterParams,
+      sort,
+      page: requestedPage,
+    });
 
-  const pageCount = libraryPageCount(filteredCount);
   if (requestedPage > pageCount && filteredCount > 0) {
     redirect(libraryPageHref({ ...filterParams, page: pageCount }));
   }
-
-  const page = Math.min(requestedPage, pageCount);
 
   if (filteredCount === 0) {
     return (
@@ -147,52 +122,13 @@ export async function LibraryResults({
         )}
       </p>
 
-      <div className="grid grid-cols-2 items-start gap-4 sm:grid-cols-3 md:grid-cols-4">
-        {userBooks.map((ub, index) => (
-          <div key={ub.id} className="flex min-w-0 flex-col gap-2">
-            <BookCard
-              book={ub.book}
-              userBook={ub}
-              href={`/books/${ub.bookId}`}
-              priority={index < 8}
-              lazyCover={index >= 8}
-            />
-            <div className="flex flex-wrap items-center gap-1 px-0.5">
-              <Badge className="text-[10px]">
-                {ub.status.replaceAll("_", " ").toLowerCase()}
-              </Badge>
-              {ub.categories.map((link) => (
-                <Badge key={link.categoryId} className="text-[10px]">
-                  {link.category.name}
-                </Badge>
-              ))}
-              {isReadableInApp(ub.book.category) && (
-                <Link
-                  href={`/read/${ub.bookId}`}
-                  prefetch={false}
-                  className="rounded-full border border-violet-800/60 bg-violet-950/40 px-2 py-0.5 text-[10px] font-medium text-violet-200 transition hover:border-violet-500 hover:bg-violet-950/70"
-                >
-                  Read
-                </Link>
-              )}
-            </div>
-            {isAdmin && (
-              <AdminBookQuickControls
-                book={{
-                  id: ub.book.id,
-                  isAdult: ub.book.isAdult,
-                  coverCorrupted: ub.book.coverCorrupted,
-                }}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-
-      <LibraryPagination
-        total={filteredCount}
+      <LibraryBookGrid
+        items={items}
         page={page}
-        {...filterParams}
+        hasMore={hasMore}
+        filterParams={filterParams}
+        showEntryMeta={showEntryMeta}
+        showAdminControls={showAdminControls}
       />
     </div>
   );

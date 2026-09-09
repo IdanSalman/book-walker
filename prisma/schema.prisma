@@ -62,9 +62,10 @@ model User {
   emailVerified       DateTime?
   image               String?
   role                Role       @default(USER)
-  hideAdultContent    Boolean    @default(true)
-  hideReadTitles      Boolean    @default(false)
-  defaultReadingMode  String     @default("auto")
+  hideAdultContent         Boolean    @default(true)
+  hideReadTitles           Boolean    @default(false)
+  showLibraryAdminControls Boolean    @default(false)
+  defaultReadingMode       String     @default("auto")
   onboardingComplete  Boolean    @default(false)
   accounts            Account[]
   sessions            Session[]

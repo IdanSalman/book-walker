@@ -8,8 +8,9 @@ import {
 import { categoryFromSlug } from "@/lib/categories";
 import { parsePublicationFilter } from "@/lib/publication";
 import { containsTextVariants } from "@/lib/contains-text";
-import { hideReadStoreBookFilter } from "@/lib/hide-read-titles";
+import { getCaughtUpBookIds, hideReadStoreBookFilter } from "@/lib/hide-read-titles";
 import { prisma } from "@/lib/prisma";
+import { STORE_PAGE_SIZE, storePageCount } from "@/lib/store-pagination";
 /** Hide books with broken PNG covers from the public store. */
 export function hideCorruptedCoverFilter(): Prisma.BookWhereInput {
   return { coverCorrupted: false };
@@ -203,6 +204,73 @@ export const STORE_BOOK_CARD_SELECT = {
 export type StoreBookCard = Prisma.BookGetPayload<{
   select: typeof STORE_BOOK_CARD_SELECT;
 }>;
+
+export type StorePageResult = {
+  items: StoreBookCard[];
+  inLibraryIds: string[];
+  total: number;
+  page: number;
+  pageCount: number;
+  hasMore: boolean;
+};
+
+export async function fetchStorePage(options: {
+  userId: string;
+  hideAdult: boolean;
+  hideRead: boolean;
+  category?: string;
+  genre?: string;
+  sort: StoreSort;
+  q?: string;
+  content?: string;
+  publication?: string;
+  page: number;
+}): Promise<StorePageResult> {
+  const caughtUpBookIds = options.hideRead
+    ? await getCaughtUpBookIds(options.userId)
+    : [];
+  const where = buildStoreWhere({
+    category: options.category,
+    genre: options.genre,
+    hideAdult: options.hideAdult,
+    hideRead: options.hideRead,
+    caughtUpBookIds,
+    content: options.content,
+    publication: options.publication,
+    q: options.q,
+  });
+
+  const [total, items] = await Promise.all([
+    prisma.book.count({ where }),
+    fetchStoreBooks(
+      where,
+      options.sort,
+      (options.page - 1) * STORE_PAGE_SIZE,
+      STORE_PAGE_SIZE,
+    ),
+  ]);
+
+  const libraryEntries =
+    items.length === 0
+      ? []
+      : await prisma.userBook.findMany({
+          where: {
+            userId: options.userId,
+            bookId: { in: items.map((book) => book.id) },
+          },
+          select: { bookId: true },
+        });
+
+  const pageCount = storePageCount(total);
+  return {
+    items,
+    inLibraryIds: libraryEntries.map((entry) => entry.bookId),
+    total,
+    page: Math.min(options.page, pageCount),
+    pageCount,
+    hasMore: options.page < pageCount,
+  };
+}
 
 export async function fetchStoreBooks(
   where: Prisma.BookWhereInput,

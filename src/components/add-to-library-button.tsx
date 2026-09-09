@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { addToLibrary } from "@/lib/actions/library";
@@ -17,8 +17,9 @@ export function AddToLibraryButton({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [added, setAdded] = useState(false);
 
-  if (inLibrary) {
+  if (inLibrary || added) {
     return (
       <Button variant="secondary" disabled>
         In your library
@@ -31,7 +32,9 @@ export function AddToLibraryButton({
       disabled={pending}
       onClick={() => {
         startTransition(async () => {
-          await addToLibrary(bookId);
+          const result = await addToLibrary(bookId);
+          if (result.error) return;
+          setAdded(true);
           onAdded?.();
           router.refresh();
         });

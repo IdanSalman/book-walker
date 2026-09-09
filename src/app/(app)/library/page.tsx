@@ -40,6 +40,9 @@ export default async function LibraryPage({
 }) {
   const session = await requireUser();
   const isAdmin = session.user.role === "ADMIN";
+  const showAdminControls =
+    isAdmin && Boolean(session.user.showLibraryAdminControls);
+  const showEntryMeta = !isAdmin || showAdminControls;
   const hideAdult = session.user.hideAdultContent ?? true;
   const hideRead = session.user.hideReadTitles ?? false;
   const {
@@ -84,10 +87,7 @@ export default async function LibraryPage({
     ? PUBLICATION_STATUS_LABELS[publication].toLowerCase()
     : null;
 
-  const resultsKey = libraryPageHref({
-    ...filterParams,
-    page: Number.parseInt(pageParam ?? "1", 10) || 1,
-  });
+  const resultsKey = libraryPageHref(filterParams);
 
   return (
     <div className="space-y-6">
@@ -166,7 +166,8 @@ export default async function LibraryPage({
       <Suspense key={resultsKey} fallback={<LibraryGridSkeleton />}>
         <LibraryResults
           userId={session.user.id}
-          isAdmin={isAdmin}
+          showEntryMeta={showEntryMeta}
+          showAdminControls={showAdminControls}
           hideAdult={hideAdult}
           hideRead={hideRead}
           librarySize={nav.librarySize}

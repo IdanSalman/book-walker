@@ -103,6 +103,8 @@ const POPULAR_ENGLISH: { key: string; name: string }[] = [
   { key: "asurascans", name: "asura scans" },
   { key: "manganato", name: "manganato" },
   { key: "mangakakalot", name: "mangakakalot" },
+  { key: "mangageko", name: "manga geko" },
+  { key: "mangageko", name: "manga gecko" },
   { key: "nelomanga", name: "nelomanga" },
   { key: "natomanga", name: "natomanga" },
   { key: "toonily", name: "toonily" },

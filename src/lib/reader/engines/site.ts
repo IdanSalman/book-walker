@@ -989,6 +989,7 @@ export function isSiteEngineKey(key: string): boolean {
     key !== "mangadex" &&
     key !== "asurascans" &&
     key !== "weebcentral" &&
-    key !== "comick"
+    key !== "comick" &&
+    key !== "mangageko"
   );
 }

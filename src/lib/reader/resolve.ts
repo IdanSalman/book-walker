@@ -17,6 +17,10 @@ import {
   createSiteEngine,
   isSiteEngineKey,
 } from "@/lib/reader/engines/site";
+import {
+  isMangaGekoSource,
+  mangaGekoEngine,
+} from "@/lib/reader/engines/mangageko";
 import { weebCentralEngine } from "@/lib/reader/engines/weebcentral";
 import { hostOf } from "@/lib/reader/html";
 import {
@@ -34,6 +38,7 @@ export const READING_ENGINES: ReaderSourceEngine[] = [
   asuraEngine,
   weebCentralEngine,
   comickEngine,
+  mangaGekoEngine,
 ];
 
 /** Page-image book scans and uploaded PDFs. Kept out of READING_ENGINES so manga import/cover repair stay comic-only. */
@@ -76,6 +81,9 @@ const COMMON_IMAGE_HOSTS = [
   "mkklcdnv6temp.xyz",
   "toonily.com",
   "tnlycdn.com",
+  "mgeko.cc",
+  "imgsrv4.com",
+  "imgsrv5.com",
 ];
 
 const ACTIVE_SOURCE_WHERE: Prisma.FetchSourceWhereInput = {
@@ -116,6 +124,7 @@ export async function sourceEngine(
   if (row.kind === "METADATA") return undefined;
   if (!row.supportsSearch && !row.supportsReading) return undefined;
   if (isComickSource(row)) return comickEngine;
+  if (isMangaGekoSource(row)) return mangaGekoEngine;
   if (row.kind !== "SCRAPER" || !isSiteEngineKey(row.key)) return undefined;
 
   return createSiteEngine(row);
@@ -152,6 +161,12 @@ async function enabledReadingEngines(): Promise<ReaderSourceEngine[]> {
     if (isComickSource(row)) {
       if (!engines.some((engine) => engine.key === comickEngine.key)) {
         engines.push(comickEngine);
+      }
+      continue;
+    }
+    if (isMangaGekoSource(row)) {
+      if (!engines.some((engine) => engine.key === mangaGekoEngine.key)) {
+        engines.push(mangaGekoEngine);
       }
       continue;
     }

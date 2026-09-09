@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { parseReadingModePreference } from "@/lib/reader/types";
 import { revalidateUserLibrary } from "@/lib/revalidate-library";
-import { requireUser } from "@/lib/session";
+import { requireAdmin, requireUser } from "@/lib/session";
 
 export async function updateHideAdultContent(hide: boolean): Promise<void> {
   const session = await requireUser();
@@ -33,6 +33,21 @@ export async function updateHideReadTitles(hide: boolean): Promise<void> {
   revalidateUserLibrary(session.user.id);
   revalidatePath("/account");
   revalidatePath("/library/add", "layout");
+}
+
+export async function updateShowLibraryAdminControls(
+  show: boolean,
+): Promise<void> {
+  const session = await requireAdmin();
+
+  await prisma.user.update({
+    where: { id: session.user.id },
+    data: { showLibraryAdminControls: show },
+  });
+
+  revalidateUserLibrary(session.user.id);
+  revalidatePath("/account");
+  revalidatePath("/library", "layout");
 }
 
 export async function updateDefaultReadingMode(mode: string): Promise<void> {

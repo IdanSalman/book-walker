@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AdultContentSetting } from "@/components/adult-content-setting";
 import { DefaultReadingModeSetting } from "@/components/default-reading-mode-setting";
 import { HideReadTitlesSetting } from "@/components/hide-read-titles-setting";
+import { LibraryAdminControlsSetting } from "@/components/library-admin-controls-setting";
 import { Badge } from "@/components/ui/badge";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
@@ -83,6 +84,11 @@ export default async function AccountPage() {
         <AdultContentSetting hideAdultContent={hideAdultContent} />
         <HideReadTitlesSetting hideReadTitles={hideReadTitles} />
         <DefaultReadingModeSetting defaultReadingMode={user.defaultReadingMode} />
+        {user.role === "ADMIN" && (
+          <LibraryAdminControlsSetting
+            showLibraryAdminControls={Boolean(user.showLibraryAdminControls)}
+          />
+        )}
       </section>
 
       <section className="space-y-3">

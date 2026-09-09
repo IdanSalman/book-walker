@@ -8,5 +8,3 @@ export function parseStorePage(value: string | undefined): number {
 export function storePageCount(total: number): number {
   return Math.max(1, Math.ceil(total / STORE_PAGE_SIZE));
 }
-
-export { storePageHref } from "@/lib/store-query";

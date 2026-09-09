@@ -1,46 +1,117 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { AddToLibraryButton } from "@/components/add-to-library-button";
 import { AddToStoreButton } from "@/components/add-to-store-button";
 import { BookDetailModal } from "@/components/book-detail-modal";
 import { CoverImage } from "@/components/cover-image";
+import { PagedInfiniteList } from "@/components/paged-infinite-list";
 import { Badge } from "@/components/ui/badge";
 import { PUBLICATION_STATUS_LABELS } from "@/lib/publication";
-import type { SourceBrowseItem } from "@/lib/sources/browse";
+import {
+  sourceBrowseHref,
+  type SourceBrowseItem,
+} from "@/lib/sources/browse";
+import type { SourceBrowsePageResult } from "@/lib/sources/browse-page";
 
 export function SourceBrowseGrid({
   sourceKey,
   items,
   isAdmin,
   coverReferer,
+  page,
+  hasMore,
+  view,
+  q,
+  category,
 }: {
   sourceKey: string;
   items: SourceBrowseItem[];
   isAdmin: boolean;
   coverReferer?: string;
+  page: number;
+  hasMore: boolean;
+  view?: string;
+  q?: string;
+  category?: string;
 }) {
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
+  const [patches, setPatches] = useState<
+    Record<string, Partial<SourceBrowseItem>>
+  >({});
+
+  function withPatch(item: SourceBrowseItem): SourceBrowseItem {
+    const patch = patches[item.id];
+    return patch ? { ...item, ...patch } : item;
+  }
+
+  const fetchPage = useCallback(
+    async (nextPage: number) => {
+      const params = new URLSearchParams();
+      if (view) params.set("view", view);
+      if (q) params.set("q", q);
+      if (category) params.set("category", category);
+      params.set("page", String(nextPage));
+
+      const response = await fetch(
+        `/api/sources/${encodeURIComponent(sourceKey)}/browse?${params}`,
+      );
+      if (!response.ok) throw new Error("Failed to load source page");
+      const data = (await response.json()) as SourceBrowsePageResult;
+      return { items: data.items, hasMore: data.hasMore };
+    },
+    [sourceKey, view, q, category],
+  );
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-        {items.map((item, index) => {
-          const previewId = item.bookId ?? item.existingTitle?.id ?? null;
-          return (
-            <SourceBrowseCard
-              key={`${item.id}-${index}`}
-              sourceKey={sourceKey}
-              item={item}
-              isAdmin={isAdmin}
-              priority={index < 8}
-              coverReferer={coverReferer}
-              onSelect={previewId ? () => setSelectedBookId(previewId) : undefined}
-            />
-          );
-        })}
-      </div>
+      <PagedInfiniteList
+        initialPage={page}
+        initialItems={items}
+        initialHasMore={hasMore}
+        fetchPage={fetchPage}
+        pageHref={(visiblePage) =>
+          sourceBrowseHref(sourceKey, visiblePage, { view, q, category })
+        }
+        renderPage={(pageItems, pageNumber) => (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+            {pageItems.map((raw, index) => {
+              const item = withPatch(raw);
+              const previewId = item.bookId ?? item.existingTitle?.id ?? null;
+              return (
+                <SourceBrowseCard
+                  key={`${item.id}-${index}`}
+                  sourceKey={sourceKey}
+                  item={item}
+                  isAdmin={isAdmin}
+                  priority={pageNumber === 1 && index < 8}
+                  coverReferer={coverReferer}
+                  onSelect={
+                    previewId ? () => setSelectedBookId(previewId) : undefined
+                  }
+                  onAddedToStore={(bookId) =>
+                    setPatches((prev) => ({
+                      ...prev,
+                      [item.id]: {
+                        ...prev[item.id],
+                        inCatalog: true,
+                        bookId,
+                      },
+                    }))
+                  }
+                  onAddedToLibrary={() =>
+                    setPatches((prev) => ({
+                      ...prev,
+                      [item.id]: { ...prev[item.id], inLibrary: true },
+                    }))
+                  }
+                />
+              );
+            })}
+          </div>
+        )}
+      />
 
       {selectedBookId && (
         <BookDetailModal
@@ -59,6 +130,8 @@ function SourceBrowseCard({
   priority,
   coverReferer,
   onSelect,
+  onAddedToStore,
+  onAddedToLibrary,
 }: {
   sourceKey: string;
   item: SourceBrowseItem;
@@ -66,6 +139,8 @@ function SourceBrowseCard({
   priority: boolean;
   coverReferer?: string;
   onSelect?: () => void;
+  onAddedToStore?: (bookId: string) => void;
+  onAddedToLibrary?: () => void;
 }) {
   const meta = [
     item.year ? String(item.year) : null,
@@ -138,13 +213,22 @@ function SourceBrowseCard({
         body
       )}
       {item.inCatalog && item.bookId ? (
-        <AddToLibraryButton bookId={item.bookId} inLibrary={item.inLibrary} />
+        <AddToLibraryButton
+          bookId={item.bookId}
+          inLibrary={item.inLibrary}
+          onAdded={onAddedToLibrary}
+        />
       ) : isAdmin ? (
-        <AddToStoreButton sourceKey={sourceKey} titleId={item.id} />
+        <AddToStoreButton
+          sourceKey={sourceKey}
+          titleId={item.id}
+          onAdded={onAddedToStore}
+        />
       ) : item.existingTitle ? (
         <AddToLibraryButton
           bookId={item.existingTitle.id}
           inLibrary={item.inLibrary}
+          onAdded={onAddedToLibrary}
         />
       ) : (
         <p className="text-xs text-zinc-500">Not in the store yet</p>

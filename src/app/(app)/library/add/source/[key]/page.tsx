@@ -4,19 +4,18 @@ import { Suspense } from "react";
 import { FilterChip } from "@/components/filter-chip";
 import { SourceBrowseFilters } from "@/components/source-browse-filters";
 import { SourceBrowseGrid } from "@/components/source-browse-grid";
-import { SourceBrowsePagination } from "@/components/source-browse-pagination";
 import { StoreBookSearch } from "@/components/store-book-search";
 import { StoreSourceNav } from "@/components/store-source-nav";
 import { sourceEngine } from "@/lib/reader/resolve";
 import { requireUser } from "@/lib/session";
 import {
-  SOURCE_BROWSE_PAGE_SIZE,
   SOURCE_BROWSE_SORT_OPTIONS,
   parseSourceBrowseSort,
   sourceBrowseHref,
+  type SourceBrowseItem,
 } from "@/lib/sources/browse";
+import { fetchSourceBrowsePage } from "@/lib/sources/browse-page";
 import {
-  annotateBrowseItems,
   getBrowsableSources,
   resolveBrowsableSource,
 } from "@/lib/sources/browsable";
@@ -76,31 +75,24 @@ export default async function SourceBrowsePage({
   }
 
   let browseError: string | null = null;
-  let items: Awaited<ReturnType<typeof annotateBrowseItems>> = [];
+  let items: SourceBrowseItem[] = [];
   let hasMore = false;
-  let total: number | undefined;
 
   try {
-    const result = await engine.browse({
-      sort: view,
+    const result = await fetchSourceBrowsePage({
+      key: source.key,
+      userId: session.user.id,
+      hideAdult,
+      hideRead,
+      view,
       query,
       categoryId: validCategory?.id,
       page,
-      limit: SOURCE_BROWSE_PAGE_SIZE,
-      hideAdult,
     });
-    items = await annotateBrowseItems(
-      hideAdult
-        ? result.items.filter((item) => !item.isAdult)
-        : result.items,
-      session.user.id,
-      source.key,
-    );
-    if (hideRead) {
-      items = items.filter((item) => !item.caughtUp);
+    if (result) {
+      items = result.items;
+      hasMore = result.hasMore;
     }
-    hasMore = result.hasMore;
-    total = result.total;
   } catch (err) {
     browseError = err instanceof Error ? err.message : "Could not load titles";
   }
@@ -182,16 +174,11 @@ export default async function SourceBrowsePage({
             items={items}
             isAdmin={isAdmin}
             coverReferer={engine.imageReferer}
-          />
-          <SourceBrowsePagination
-            sourceKey={source.key}
             page={page}
             hasMore={hasMore}
-            total={total}
             view={viewParam}
             q={query || undefined}
             category={validCategory?.id}
-            count={items.length}
           />
         </>
       )}

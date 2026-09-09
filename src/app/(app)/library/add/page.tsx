@@ -6,30 +6,22 @@ import { FilterChip } from "@/components/filter-chip";
 import { StoreBookGrid } from "@/components/store-book-grid";
 import { StoreBookSearch } from "@/components/store-book-search";
 import { StoreFilters } from "@/components/store-filters";
-import { StorePagination } from "@/components/store-pagination";
 import { StoreSourceNav } from "@/components/store-source-nav";
 import { CATEGORIES } from "@/lib/categories";
 import { parseStoreContentFilter } from "@/lib/adult-content";
-import { getCaughtUpBookIds } from "@/lib/hide-read-titles";
 import {
   PUBLICATION_FILTER_OPTIONS,
   PUBLICATION_STATUS_LABELS,
   parsePublicationFilter,
 } from "@/lib/publication";
-import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { getBrowsableSources } from "@/lib/sources/browsable";
+import { parseStorePage } from "@/lib/store-pagination";
 import {
-  parseStorePage,
-  STORE_PAGE_SIZE,
-  storePageCount,
-  storePageHref,
-} from "@/lib/store-pagination";
-import {
-  buildStoreWhere,
-  fetchStoreBooks,
+  fetchStorePage,
   getStoreGenres,
   parseStoreSort,
+  storePageHref,
 } from "@/lib/store-query";
 
 export default async function BrowseStorePage({
@@ -62,9 +54,6 @@ export default async function BrowseStorePage({
   const sort = parseStoreSort(sortParam);
   const hideAdult = session.user.hideAdultContent ?? true;
   const hideRead = session.user.hideReadTitles ?? false;
-  const caughtUpBookIds = hideRead
-    ? await getCaughtUpBookIds(session.user.id)
-    : [];
   const contentFilter = parseStoreContentFilter(contentParam, hideAdult);
   const contentUrl =
     contentFilter === "all" ? undefined : contentFilter;
@@ -97,31 +86,25 @@ export default async function BrowseStorePage({
     }
   }
 
-  const where = buildStoreWhere({
-    category: categoryParam,
-    genre: validGenre,
-    hideAdult,
-    hideRead,
-    caughtUpBookIds,
-    content: contentUrl,
-    publication: showPublicationFilters ? publicationParam : undefined,
-    q: query,
-  });
-
   const requestedPage = parseStorePage(pageParam);
-  const [total, books, genres, sources] = await Promise.all([
-    prisma.book.count({ where }),
-    fetchStoreBooks(
-      where,
+  const [storePage, genres, sources] = await Promise.all([
+    fetchStorePage({
+      userId: session.user.id,
+      hideAdult,
+      hideRead,
+      category: categoryParam,
+      genre: validGenre,
       sort,
-      (requestedPage - 1) * STORE_PAGE_SIZE,
-      STORE_PAGE_SIZE,
-    ),
+      q: query,
+      content: contentUrl,
+      publication: showPublicationFilters ? publicationParam : undefined,
+      page: requestedPage,
+    }),
     genresPromise,
     getBrowsableSources(),
   ]);
-  const pageCount = storePageCount(total);
-  const page = Math.min(requestedPage, pageCount);
+  const { items: books, total, page, pageCount, hasMore, inLibraryIds } =
+    storePage;
   if (requestedPage > pageCount && total > 0) {
     redirect(
       storePageHref(pageCount, {
@@ -134,17 +117,6 @@ export default async function BrowseStorePage({
       }),
     );
   }
-
-  const libraryEntries =
-    books.length === 0
-      ? []
-      : await prisma.userBook.findMany({
-          where: {
-            userId: session.user.id,
-            bookId: { in: books.map((b) => b.id) },
-          },
-          select: { bookId: true },
-        });
 
   const filterParams = {
     category: categoryParam,
@@ -288,23 +260,14 @@ export default async function BrowseStorePage({
           )}
         </div>
       ) : (
-        <>
-          <StoreBookGrid
-            books={books}
-            inLibraryIds={libraryEntries.map((e) => e.bookId)}
-            isAdmin={session.user.role === "ADMIN"}
-          />
-          <StorePagination
-            total={total}
-            page={page}
-            category={categoryParam}
-            genre={validGenre}
-            sort={sort}
-            q={query || undefined}
-            content={contentUrl}
-            publication={showPublicationFilters ? publicationParam : undefined}
-          />
-        </>
+        <StoreBookGrid
+          books={books}
+          inLibraryIds={inLibraryIds}
+          isAdmin={session.user.role === "ADMIN"}
+          page={page}
+          hasMore={hasMore}
+          filterParams={filterParams}
+        />
       )}
     </div>
   );
