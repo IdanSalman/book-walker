@@ -67,6 +67,7 @@ export function SourceBrowseGrid({
   return (
     <>
       <PagedInfiniteList
+        resetKey={sourceBrowseHref(sourceKey, page, { view, q, category })}
         initialPage={page}
         initialItems={items}
         initialHasMore={hasMore}

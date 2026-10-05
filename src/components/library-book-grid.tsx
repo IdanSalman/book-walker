@@ -116,6 +116,7 @@ export function LibraryBookGrid({
 
   return (
     <PagedInfiniteList
+      resetKey={libraryPageHref({ ...filterParams, page })}
       initialPage={page}
       initialItems={items}
       initialHasMore={hasMore}

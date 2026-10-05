@@ -68,6 +68,7 @@ export function StoreBookGrid({
   return (
     <>
       <PagedInfiniteList
+        resetKey={storePageHref(page, filterParams)}
         initialPage={page}
         initialItems={books}
         initialHasMore={hasMore}

@@ -22,6 +22,7 @@ type LoadedPage<T> = {
 };
 
 type PagedInfiniteListProps<T> = {
+  resetKey: string;
   initialPage: number;
   initialItems: T[];
   initialHasMore: boolean;
@@ -45,7 +46,11 @@ function syncPageUrl(href: string) {
   );
 }
 
-export function PagedInfiniteList<T>({
+export function PagedInfiniteList<T>(props: PagedInfiniteListProps<T>) {
+  return <PagedInfiniteListInner key={props.resetKey} {...props} />;
+}
+
+function PagedInfiniteListInner<T>({
   initialPage,
   initialItems,
   initialHasMore,

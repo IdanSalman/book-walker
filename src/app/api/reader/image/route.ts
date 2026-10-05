@@ -12,6 +12,13 @@ const ALLOWED_PROTOCOLS = new Set(["https:"]);
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
+function imageUnavailable(status = 502) {
+  return new Response("Image unavailable", {
+    status,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+
 function unsafeHostname(hostname: string): boolean {
   if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
   if (hostname === "127.0.0.1" || hostname === "::1" || hostname === "0.0.0.0") {
@@ -67,60 +74,60 @@ export async function GET(request: Request) {
     return new Response("Blocked host", { status: 400 });
   }
 
-  if (isMangaDexImageHost(target.hostname)) {
-    const params = new URL(request.url).searchParams;
-    const chapterId = params.get("mdc");
-    const dataSaver = params.get("ds") === "1";
-    const image = await fetchMangaDexReaderImage(target, {
-      chapterId: chapterId && MD_UUID_RE.test(chapterId) ? chapterId : null,
-      dataSaver,
+  try {
+    if (isMangaDexImageHost(target.hostname)) {
+      const params = new URL(request.url).searchParams;
+      const chapterId = params.get("mdc");
+      const dataSaver = params.get("ds") === "1";
+      const image = await fetchMangaDexReaderImage(target, {
+        chapterId: chapterId && MD_UUID_RE.test(chapterId) ? chapterId : null,
+        dataSaver,
+      });
+      if (!image) return imageUnavailable();
+      return new Response(Buffer.from(image.bytes), {
+        headers: {
+          "Content-Type": image.contentType,
+          "Cache-Control": "private, max-age=300",
+        },
+      });
+    }
+
+    const referer = await imageRefererForHost(target.hostname);
+    const pageReferer = requestedReferer
+      ? `${requestedReferer.origin}/`
+      : referer;
+
+    const upstream = await fetchKeepingReferer(target.toString(), {
+      headers: {
+        Accept: "image/avif,image/webp,image/png,image/jpeg,image/*,*/*",
+        "User-Agent": BROWSER_UA,
+        ...(pageReferer ? { Referer: pageReferer } : {}),
+      },
+      signal: request.signal,
     });
-    if (!image) {
-      return new Response("Image unavailable", {
+
+    if (!upstream.ok) {
+      return imageUnavailable(upstream.status);
+    }
+
+    const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
+    if (!contentType.startsWith("image/")) {
+      return new Response("Unexpected content", {
         status: 502,
         headers: { "Cache-Control": "no-store" },
       });
     }
-    return new Response(Buffer.from(image.bytes), {
+
+    return new Response(upstream.body, {
       headers: {
-        "Content-Type": image.contentType,
+        "Content-Type": contentType,
         "Cache-Control": "private, max-age=300",
       },
     });
+  } catch {
+    if (request.signal.aborted) {
+      return new Response(null, { status: 499 });
+    }
+    return imageUnavailable();
   }
-
-  const referer = await imageRefererForHost(target.hostname);
-  const pageReferer = requestedReferer
-    ? `${requestedReferer.origin}/`
-    : referer;
-
-  const upstream = await fetchKeepingReferer(target.toString(), {
-    headers: {
-      Accept: "image/avif,image/webp,image/png,image/jpeg,image/*,*/*",
-      "User-Agent": BROWSER_UA,
-      ...(pageReferer ? { Referer: pageReferer } : {}),
-    },
-  });
-
-  if (!upstream.ok) {
-    return new Response("Image unavailable", {
-      status: upstream.status,
-      headers: { "Cache-Control": "no-store" },
-    });
-  }
-
-  const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
-  if (!contentType.startsWith("image/")) {
-    return new Response("Unexpected content", {
-      status: 502,
-      headers: { "Cache-Control": "no-store" },
-    });
-  }
-
-  return new Response(upstream.body, {
-    headers: {
-      "Content-Type": contentType,
-      "Cache-Control": "private, max-age=300",
-    },
-  });
 }

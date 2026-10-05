@@ -49,6 +49,12 @@ function isTimeoutError(error: unknown): boolean {
  * Undici/Next fetch strips the Referer header. Manganato CDNs require it,
  * so image and scrape requests go through Node's http(s) client instead.
  */
+function abortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
+
 export async function fetchKeepingReferer(
   url: string,
   init?: {
@@ -56,6 +62,8 @@ export async function fetchKeepingReferer(
     headers?: Record<string, string>;
     body?: string;
     redirect?: "follow" | "manual";
+    timeoutMs?: number;
+    signal?: AbortSignal;
   },
   redirects = 0,
 ): Promise<Response> {
@@ -69,7 +77,14 @@ export async function fetchKeepingReferer(
     headers["Content-Length"] = Buffer.byteLength(init.body).toString();
   }
 
+  if (init?.signal?.aborted) {
+    throw abortError();
+  }
+
+  const timeoutMs = init?.timeoutMs ?? SOURCE_TIMEOUT_MS;
+
   return new Promise((resolve, reject) => {
+    let settled = false;
     const send = target.protocol === "http:" ? httpRequest : httpsRequest;
     const req = send(
       target,
@@ -78,6 +93,7 @@ export async function fetchKeepingReferer(
         headers,
       },
       (res) => {
+        req.setTimeout(0);
         const status = res.statusCode ?? 502;
         const location = res.headers.location;
         if (
@@ -89,7 +105,7 @@ export async function fetchKeepingReferer(
         ) {
           res.resume();
           const next = new URL(location, target).toString();
-          resolve(fetchKeepingReferer(next, init, redirects + 1));
+          finish(() => resolve(fetchKeepingReferer(next, init, redirects + 1)));
           return;
         }
 
@@ -103,16 +119,34 @@ export async function fetchKeepingReferer(
           }
         }
 
-        resolve(
-          new Response(Readable.toWeb(res) as ReadableStream, {
-            status,
-            headers: headerInit,
-          }),
+        finish(() =>
+          resolve(
+            new Response(Readable.toWeb(res) as ReadableStream, {
+              status,
+              headers: headerInit,
+            }),
+          ),
         );
       },
     );
-    req.on("error", reject);
-    req.setTimeout(SOURCE_TIMEOUT_MS, () => {
+
+    const onAbort = () => {
+      req.destroy();
+      finish(() => reject(abortError()));
+    };
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      init?.signal?.removeEventListener("abort", onAbort);
+      fn();
+    };
+
+    init?.signal?.addEventListener("abort", onAbort, { once: true });
+    req.on("error", (error) => {
+      finish(() => reject(error));
+    });
+    req.setTimeout(timeoutMs, () => {
       req.destroy(new Error("Source request timed out"));
     });
     if (init?.body) req.write(init.body);
