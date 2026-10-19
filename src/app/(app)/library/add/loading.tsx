@@ -7,6 +7,7 @@ export default function StoreLoading() {
         <div className="h-9 w-56 animate-pulse rounded bg-zinc-800" />
         <div className="h-4 w-80 animate-pulse rounded bg-zinc-800" />
       </div>
+      <div className="h-36 animate-pulse rounded-xl bg-zinc-900" />
       <div className="flex flex-wrap gap-2">
         {Array.from({ length: 4 }, (_, i) => (
           <div

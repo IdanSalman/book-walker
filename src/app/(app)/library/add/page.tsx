@@ -3,10 +3,10 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { FilterChip } from "@/components/filter-chip";
+import { MarketSourceSearch } from "@/components/market-source-search";
 import { StoreBookGrid } from "@/components/store-book-grid";
 import { StoreBookSearch } from "@/components/store-book-search";
 import { StoreFilters } from "@/components/store-filters";
-import { StoreSourceNav } from "@/components/store-source-nav";
 import { CATEGORIES } from "@/lib/categories";
 import { parseStoreContentFilter } from "@/lib/adult-content";
 import {
@@ -132,20 +132,24 @@ export default async function BrowseStorePage({
       <div>
         <h1 className="text-3xl font-bold text-zinc-50">Browse store</h1>
         <p className="mt-1 text-zinc-400">
-          Add recognized titles to your personal library, or pick a source to
-          browse live listings.
-          {total > 0 && (
-            <span className="ml-1 text-zinc-500">
-              ({total.toLocaleString()} available
-              {query ? ` matching “${query}”` : ""}
-              {validGenre ? ` in ${validGenre}` : ""}
-              {publication ? ` · ${PUBLICATION_STATUS_LABELS[publication].toLowerCase()}` : ""})
-            </span>
-          )}
+          Add recognized titles from the catalog, or search live sources.
         </p>
       </div>
 
-      <StoreSourceNav sources={sources} />
+      <MarketSourceSearch
+        sources={sources}
+        isAdmin={session.user.role === "ADMIN"}
+      >
+      {total > 0 && (
+        <p className="text-sm text-zinc-500">
+          {total.toLocaleString()} in the catalog
+          {query ? ` matching “${query}”` : ""}
+          {validGenre ? ` in ${validGenre}` : ""}
+          {publication
+            ? ` · ${PUBLICATION_STATUS_LABELS[publication].toLowerCase()}`
+            : ""}
+        </p>
+      )}
 
       <Suspense>
         <StoreBookSearch defaultValue={query} />
@@ -269,6 +273,7 @@ export default async function BrowseStorePage({
           filterParams={filterParams}
         />
       )}
+      </MarketSourceSearch>
     </div>
   );
 }

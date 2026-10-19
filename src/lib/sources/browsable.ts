@@ -13,13 +13,18 @@ import {
 export type BrowsableSource = {
   key: string;
   name: string;
+  coverReferer?: string;
 };
+
+function compareSourceNames(left: { name: string }, right: { name: string }) {
+  return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+}
 
 export async function getBrowsableSources(): Promise<BrowsableSource[]> {
   await ensureBuiltInSources();
   const rows = await prisma.fetchSource.findMany({
     where: { enabled: true },
-    orderBy: [{ priority: "desc" }, { name: "asc" }],
+    orderBy: { name: "asc" },
     select: {
       key: true,
       name: true,
@@ -29,10 +34,13 @@ export async function getBrowsableSources(): Promise<BrowsableSource[]> {
   });
 
   if (rows.length === 0) {
-    return READING_ENGINES.filter((engine) => engine.browse).map((engine) => ({
-      key: engine.key,
-      name: engine.name,
-    }));
+    return READING_ENGINES.filter((engine) => engine.browse)
+      .map((engine) => ({
+        key: engine.key,
+        name: engine.name,
+        coverReferer: engine.imageReferer,
+      }))
+      .sort(compareSourceNames);
   }
 
   const sources: BrowsableSource[] = [];
@@ -47,8 +55,10 @@ export async function getBrowsableSources(): Promise<BrowsableSource[]> {
     sources.push({
       key: engine.key,
       name: row.key === engine.key ? row.name : engine.name,
+      coverReferer: engine.imageReferer,
     });
   }
+  sources.sort(compareSourceNames);
   return sources;
 }
 
@@ -64,7 +74,11 @@ export async function resolveBrowsableSource(
   });
   if (row && !row.enabled) return null;
 
-  return { key: engine.key, name: row?.name ?? engine.name };
+  return {
+    key: engine.key,
+    name: row?.name ?? engine.name,
+    coverReferer: engine.imageReferer,
+  };
 }
 
 export async function annotateBrowseItems(

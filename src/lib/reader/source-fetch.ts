@@ -8,7 +8,11 @@ import { Readable } from "node:stream";
 import { promisify } from "node:util";
 
 import { isCloudflareChallenge, isToonilyHost } from "@/lib/reader/html";
-import { readerFetchRevalidate } from "@/lib/reader/fetch-mode";
+import {
+  isSourceSearchUrl,
+  isVercelDeployment,
+  readerFetchRevalidate,
+} from "@/lib/reader/fetch-mode";
 
 const execFileAsync = promisify(execFile);
 
@@ -245,14 +249,23 @@ export async function sourceFetch(
     throwOnError?: boolean;
   },
 ): Promise<Response> {
-  const revalidate = readerFetchRevalidate(init?.revalidate);
+  const method = init?.method ?? "GET";
+  // On Vercel, title search must skip the Next.js data cache. A cached GET can
+  // come back as the unfiltered listing. Local dev keeps the direct fetch.
+  const directSearch =
+    isVercelDeployment() &&
+    method === "GET" &&
+    !init?.body &&
+    isSourceSearchUrl(url);
+  const revalidate = readerFetchRevalidate(
+    directSearch ? false : init?.revalidate,
+  );
   const headers = mergeSourceHeaders(url, {
     Accept: init?.accept ?? "text/html,application/json;q=0.9,*/*;q=0.8",
     "User-Agent": BROWSER_UA,
     ...(init?.referer ? { Referer: init.referer } : {}),
     ...init?.headers,
   });
-  const method = init?.method ?? "GET";
   const nodeInit = {
     method,
     headers,
@@ -261,23 +274,33 @@ export async function sourceFetch(
 
   let res: Response;
   try {
-    res = await fetch(url, {
-      ...nodeInit,
-      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
-      ...(revalidate === false
-        ? { cache: "no-store" as const }
-        : { next: { revalidate } }),
-    });
+    if (directSearch) {
+      res = await fetchKeepingReferer(url, {
+        ...nodeInit,
+        signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+      });
+    } else {
+      res = await fetch(url, {
+        ...nodeInit,
+        signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+        ...(revalidate === false
+          ? { cache: "no-store" as const }
+          : { next: { revalidate } }),
+      });
+    }
   } catch (error) {
     if (isTimeoutError(error)) {
       throw new Error("Source request timed out");
     }
-    throw error;
+    if (!directSearch) throw error;
+    const viaCurl = await fetchViaCurl(url, headers);
+    if (!viaCurl) throw error;
+    res = viaCurl;
   }
   let challenged: boolean;
   ({ res, challenged } = await withChallengeCheck(res));
 
-  if (challenged) {
+  if (challenged && !directSearch) {
     ({ res, challenged } = await withChallengeCheck(
       await fetchKeepingReferer(url, nodeInit),
     ));

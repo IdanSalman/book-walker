@@ -34,9 +34,9 @@ export function AdminRefreshCaughtUpButton() {
         {pending ? "Checking fully-read manga…" : "Check fully-read manga for new chapters"}
       </Button>
       <p className="text-xs text-zinc-500">
-        Refetches chapter lists for manga that someone has finished. New chapters
-        update the catalog count and bring those titles back into libraries that
-        hide caught-up series.
+        Refetches chapter lists from each title's saved source for manga that
+        someone has finished. New chapters update the catalog count and bring
+        those titles back into libraries that hide caught-up series.
       </p>
       {message && <p className="text-sm text-emerald-400">{message}</p>}
       {error && <p className="text-sm text-red-400">{error}</p>}

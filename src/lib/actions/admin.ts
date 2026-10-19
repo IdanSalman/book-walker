@@ -9,6 +9,7 @@ import { categoryLabel } from "@/lib/categories";
 import { prisma } from "@/lib/prisma";
 import { isPngCoverUrl, scanPngCoverStatuses } from "@/lib/cover-validation";
 import { getFullyReadLibraryMangaIds } from "@/lib/hide-read-titles";
+import { enabledReadingEngines } from "@/lib/reader/resolve";
 import { LOCAL_PDF_NAME, pdfPageCount } from "@/lib/reader/pdf-pages";
 import { deleteBookPdf, saveBookPdf } from "@/lib/reader/pdf-store";
 import { revalidateUserLibrary } from "@/lib/revalidate-library";
@@ -18,6 +19,7 @@ import {
   repairBookCover,
   repairMissingCovers,
 } from "@/lib/sources/repair-cover";
+import { refreshCaughtUpChapterCounts } from "@/lib/sync/caught-up-chapters";
 import { syncBookMetadata } from "@/lib/sync/book-metadata";
 
 function parseGenres(value: FormDataEntryValue | null): string[] {
@@ -548,10 +550,6 @@ export async function syncOngoingManga(
   };
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function revalidateLibrariesForBooks(bookIds: string[]) {
   if (bookIds.length === 0) return;
   const owners = await prisma.userBook.findMany({
@@ -568,9 +566,9 @@ async function revalidateLibrariesForBooks(bookIds: string[]) {
 }
 
 /**
- * Refetch chapter lists for manga that someone has fully read. When a source
- * lists more chapters than the catalog, bump the count so hide-read-titles
- * users see those entries in their library again.
+ * Refetch chapter counts for manga that someone has fully read, using each
+ * title's saved source. When that source lists more chapters than the catalog,
+ * bump the count so hide-read-titles users see those entries again.
  */
 export async function refreshCaughtUpManga(): Promise<ActionState> {
   await requireAdmin();
@@ -589,42 +587,20 @@ export async function refreshCaughtUpManga(): Promise<ActionState> {
       externalId: true,
       sourceUrl: true,
       sourceName: true,
-      publicationStatus: true,
     },
     orderBy: { title: "asc" },
   });
 
-  let checked = 0;
-  let withNewChapters = 0;
-  const updatedBookIds: string[] = [];
-  const errors: string[] = [];
-
-  for (const [index, book] of books.entries()) {
-    if (index > 0) await sleep(250);
-    try {
-      const result = await syncBookMetadata(book);
-      const hasNewChapters = result.totalPages > book.totalPages;
-      await prisma.book.update({
-        where: { id: book.id },
-        data: {
-          totalPages: hasNewChapters ? result.totalPages : book.totalPages,
-          publicationStatus: result.publicationStatus,
-          sourceUrl: result.sourceUrl ?? book.sourceUrl,
-          sourceName: result.sourceName ?? book.sourceName,
-          externalId: result.externalId ?? book.externalId,
-          lastSyncedAt: result.lastSyncedAt,
-        },
-      });
-      checked += 1;
-      if (hasNewChapters) {
-        withNewChapters += 1;
-        updatedBookIds.push(book.id);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Sync failed";
-      errors.push(`${book.title}: ${message}`);
-    }
-  }
+  const engines = await enabledReadingEngines();
+  const { checked, withNewChapters, updatedBookIds, errors } =
+    await refreshCaughtUpChapterCounts(books, engines, {
+      persistIncrease: async (book, totalPages) => {
+        await prisma.book.update({
+          where: { id: book.id },
+          data: { totalPages, lastSyncedAt: new Date() },
+        });
+      },
+    });
 
   revalidateCatalog();
   await revalidateLibrariesForBooks(updatedBookIds);

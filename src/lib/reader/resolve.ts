@@ -130,7 +130,7 @@ export async function sourceEngine(
   return createSiteEngine(row);
 }
 
-async function enabledReadingEngines(): Promise<ReaderSourceEngine[]> {
+export async function enabledReadingEngines(): Promise<ReaderSourceEngine[]> {
   await ensureBuiltInSources();
   const rows = await prisma.fetchSource.findMany({
     where: ACTIVE_SOURCE_WHERE,

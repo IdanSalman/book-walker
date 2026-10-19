@@ -7,6 +7,7 @@
 
 import { mangaDexIdFromUrl } from "@/lib/publication";
 import { MD_UUID_RE, mangadexFetch } from "@/lib/mangadex-api";
+import { latestChapterNumber } from "@/lib/reader/chapter-progress";
 import { normalizeTitle, titlesMatch } from "@/lib/reader/source-id";
 import type {
   ReaderChapter,
@@ -16,6 +17,8 @@ import type {
 } from "@/lib/reader/types";
 
 const CHAPTER_LIMIT = 100;
+/** One descending feed page. The caught-up check only needs the highest chapter number. */
+const LATEST_FEED_LIMIT = 100;
 
 type LocalizedString = Record<string, string>;
 
@@ -264,6 +267,53 @@ export async function getChapterList(mangaId: string): Promise<ReaderChapter[]> 
     chapters = await fetchAllChapters(mangaId, "ja");
   }
   return chapters;
+}
+
+async function fetchLatestChapterPage(
+  mangaId: string,
+  language: string,
+): Promise<ReaderChapter[]> {
+  const path =
+    `/manga/${mangaId}/feed?limit=${LATEST_FEED_LIMIT}&offset=0` +
+    `&translatedLanguage[]=${encodeURIComponent(language)}` +
+    `&includeFuturePublishAt=0&includeExternalUrl=0&includeUnavailable=0` +
+    `&order[chapter]=desc&includes[]=scanlation_group` +
+    `&${contentRatingParams()}`;
+  const res = await mangadexFetch(path, { revalidate: false });
+  const page = (await res.json()) as Paginated<ChapterData>;
+  return (page.data ?? [])
+    .map(mapChapter)
+    .filter((chapter): chapter is ReaderChapter => chapter != null);
+}
+
+function highestNumberedChapter(chapters: ReaderChapter[]): number | null {
+  const numbered = chapters.filter((chapter) => chapter.chapterNumber >= 0);
+  if (numbered.length === 0) return null;
+  return latestChapterNumber(numbered);
+}
+
+/**
+ * Latest chapter number from the stored MangaDex title URL.
+ * One feed page, ordered by chapter descending — not the full chapter list,
+ * and not the statistics total (that count mixes languages and scanlation groups).
+ */
+export async function latestMangaDexChapterNumber(
+  sourceUrl: string,
+): Promise<number> {
+  const mangaId = mangaDexIdFromUrl(sourceUrl);
+  if (!mangaId) throw new Error("Invalid MangaDex URL");
+
+  const english = highestNumberedChapter(
+    await fetchLatestChapterPage(mangaId, "en"),
+  );
+  if (english != null) return english;
+
+  const japanese = highestNumberedChapter(
+    await fetchLatestChapterPage(mangaId, "ja"),
+  );
+  if (japanese != null) return japanese;
+
+  throw new Error("MangaDex: no readable chapters");
 }
 
 export async function getMangaWithChapters(book: {

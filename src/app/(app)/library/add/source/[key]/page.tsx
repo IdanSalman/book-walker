@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 
@@ -5,7 +6,6 @@ import { FilterChip } from "@/components/filter-chip";
 import { SourceBrowseFilters } from "@/components/source-browse-filters";
 import { SourceBrowseGrid } from "@/components/source-browse-grid";
 import { StoreBookSearch } from "@/components/store-book-search";
-import { StoreSourceNav } from "@/components/store-source-nav";
 import { sourceEngine } from "@/lib/reader/resolve";
 import { requireUser } from "@/lib/session";
 import {
@@ -15,11 +15,10 @@ import {
   type SourceBrowseItem,
 } from "@/lib/sources/browse";
 import { fetchSourceBrowsePage } from "@/lib/sources/browse-page";
-import {
-  getBrowsableSources,
-  resolveBrowsableSource,
-} from "@/lib/sources/browsable";
+import { resolveBrowsableSource } from "@/lib/sources/browsable";
 import { parseStorePage } from "@/lib/store-pagination";
+
+export const dynamic = "force-dynamic";
 
 export default async function SourceBrowsePage({
   params,
@@ -42,10 +41,7 @@ export default async function SourceBrowsePage({
     page: pageParam,
   } = await searchParams;
 
-  const [source, sources] = await Promise.all([
-    resolveBrowsableSource(key),
-    getBrowsableSources(),
-  ]);
+  const source = await resolveBrowsableSource(key);
   if (!source) notFound();
 
   const engine = await sourceEngine(source.key);
@@ -118,7 +114,12 @@ export default async function SourceBrowsePage({
         </p>
       </div>
 
-      <StoreSourceNav sources={sources} activeKey={source.key} />
+      <Link
+        href="/library/add"
+        className="inline-block text-sm text-violet-400 hover:text-violet-300"
+      >
+        ← Catalog
+      </Link>
 
       <Suspense>
         <StoreBookSearch

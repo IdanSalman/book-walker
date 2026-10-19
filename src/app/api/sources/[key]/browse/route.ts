@@ -2,6 +2,8 @@ import { auth } from "@/lib/auth";
 import { fetchSourceBrowsePage } from "@/lib/sources/browse-page";
 import { parseStorePage } from "@/lib/store-pagination";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ key: string }> },
@@ -30,6 +32,11 @@ export async function GET(
       return Response.json({ error: "Not found" }, { status: 404 });
     }
 
+    if (url.searchParams.get("q")?.trim()) {
+      return Response.json(result, {
+        headers: { "Cache-Control": "private, no-store" },
+      });
+    }
     return Response.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not load titles";
