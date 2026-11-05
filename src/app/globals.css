@@ -23,6 +23,12 @@ html.reader-active {
   scrollbar-color: rgb(82 82 91 / 0.45) transparent;
 }
 
+html.reader-paged,
+html.reader-paged body {
+  height: 100%;
+  overflow: hidden;
+}
+
 html.reader-active::-webkit-scrollbar {
   width: 6px;
   height: 6px;

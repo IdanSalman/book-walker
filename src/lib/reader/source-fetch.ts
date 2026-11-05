@@ -368,11 +368,15 @@ export function uniqueUrls(urls: string[]): string[] {
   return result;
 }
 
+const LABELED_CHAPTER_NUMBER =
+  /\b(?:chapters?|chaps?|ch|episodes?|eps?)\.?\s*#?\s*(\d+(?:\.\d+)?)/gi;
+
 export function parseChapterNumber(value: string | null | undefined): number {
   if (!value) return -1;
-  const match = value.match(/(\d+(?:\.\d+)?)/);
-  if (!match) return -1;
-  const parsed = Number.parseFloat(match[1]);
+  const labeled = [...value.matchAll(LABELED_CHAPTER_NUMBER)].at(-1);
+  const raw = labeled?.[1] ?? value.match(/(\d+(?:\.\d+)?)/)?.[1];
+  if (!raw) return -1;
+  const parsed = Number.parseFloat(raw);
   return Number.isFinite(parsed) ? parsed : -1;
 }
 

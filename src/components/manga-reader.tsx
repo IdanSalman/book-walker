@@ -23,7 +23,8 @@ import {
 } from "lucide-react";
 
 import { PdfPageView, prefetchPdfPage } from "@/components/pdf-page-view";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { sortReaderChapters } from "@/lib/reader/chapter-sort";
 import {
   adjacentDistinctChapter,
   chapterCountsAsRead,
@@ -235,7 +236,7 @@ function chapterIdFromPath(): string | null {
 export function MangaReader({
   bookId,
   bookTitle,
-  chapters,
+  chapters: sourceChapters,
   chapterId: initialChapterId,
   currentPage,
   suggestedMode,
@@ -249,7 +250,12 @@ export function MangaReader({
   suggestedMode: ReadingMode;
   progressMode?: "chapter" | "page";
 }) {
+  const chapters = useMemo(
+    () => sortReaderChapters(sourceChapters),
+    [sourceChapters],
+  );
   const router = useRouter();
+  const bookHref = `/books/${bookId}`;
   const [chapterId, setChapterId] = useState(initialChapterId);
   useEffect(() => {
     setChapterId(initialChapterId);
@@ -340,6 +346,15 @@ export function MangaReader({
     [viewKey, pageIndex],
   );
 
+  const exitToBook = useCallback(() => {
+    saveChapterView();
+    router.push(bookHref);
+  }, [bookHref, router, saveChapterView]);
+
+  useEffect(() => {
+    router.prefetch(bookHref);
+  }, [bookHref, router]);
+
   const savedView = readView(viewKey);
   const restoreToEnd =
     !savedView &&
@@ -350,13 +365,16 @@ export function MangaReader({
   useEffect(() => {
     const html = document.documentElement;
     html.classList.add("reader-active");
+    const paged = mode !== "webtoon";
+    html.classList.toggle("reader-paged", paged);
+    if (paged) window.scrollTo(0, 0);
     const previous = window.history.scrollRestoration;
     window.history.scrollRestoration = "manual";
     return () => {
-      html.classList.remove("reader-active");
+      html.classList.remove("reader-active", "reader-paged");
       window.history.scrollRestoration = previous;
     };
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
     if (loading) return;
@@ -748,8 +766,7 @@ export function MangaReader({
           setChapterListOpen(false);
           return;
         }
-        saveChapterView();
-        router.push(`/books/${bookId}`);
+        exitToBook();
         return;
       }
       if (
@@ -762,19 +779,33 @@ export function MangaReader({
       ) {
         return;
       }
-      if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+      if (
+        event.target instanceof HTMLButtonElement ||
+        event.target instanceof HTMLAnchorElement
+      ) {
+        return;
+      }
+      if (chapterListOpen) return;
+      const pageForward =
+        event.key === "ArrowDown" ||
+        event.key === "PageDown" ||
+        (event.key === " " && !event.shiftKey);
+      const pageBackward =
+        event.key === "ArrowUp" ||
+        event.key === "PageUp" ||
+        (event.key === " " && event.shiftKey);
+      const right = event.key === "ArrowRight";
+      const left = event.key === "ArrowLeft";
+      if (!pageForward && !pageBackward && !right && !left) return;
+      if (mode === "webtoon" && !right && !left) return;
       event.preventDefault();
       setPagedFooterOpen(false);
-      const forward = event.key === "ArrowRight";
+      const forward =
+        pageForward ||
+        (mode === "rtl" ? left : right);
       if (mode !== "webtoon") {
-        if (mode === "rtl") {
-          if (forward) goPrevPage();
-          else goNextPage();
-        } else if (forward) {
-          goNextPage();
-        } else {
-          goPrevPage();
-        }
+        if (forward) goNextPage();
+        else goPrevPage();
         return;
       }
       if (forward) {
@@ -787,10 +818,8 @@ export function MangaReader({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [
-    router,
-    bookId,
     chapterListOpen,
-    saveChapterView,
+    exitToBook,
     nextChapter,
     prevChapter,
     goToChapter,
@@ -799,6 +828,11 @@ export function MangaReader({
     mode,
     markCompleteAndMaybeAdvance,
   ]);
+
+  useEffect(() => {
+    if (mode === "webtoon") return;
+    window.scrollTo(0, 0);
+  }, [mode, pageIndex, resolvedChapterId]);
 
   useEffect(() => {
     if (mode === "webtoon") return;
@@ -849,7 +883,7 @@ export function MangaReader({
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-black px-4 text-center">
         <p className="text-zinc-300">Chapter not found.</p>
-        <Link href={`/books/${bookId}`} className="text-sm text-violet-400">
+        <Link href={bookHref} className="text-sm text-violet-400">
           Back to title
         </Link>
       </div>
@@ -857,9 +891,17 @@ export function MangaReader({
   }
 
   return (
-    <div className="relative min-h-dvh bg-black text-white">
+    <div
+      className={cn(
+        "relative bg-black text-white",
+        mode === "webtoon" ? "min-h-dvh" : "h-dvh overflow-hidden",
+      )}
+    >
       <div
-        className="min-h-dvh select-none"
+        className={cn(
+          "select-none",
+          mode === "webtoon" ? "min-h-dvh" : "h-dvh overflow-hidden",
+        )}
         onClick={(event) => {
           if (chapterListOpen) return;
           if (ignoreClick.current) {
@@ -923,7 +965,7 @@ export function MangaReader({
             >
               Retry
             </button>
-            <Link href={`/books/${bookId}`} className="text-sm text-violet-400">
+            <Link href={bookHref} className="text-sm text-violet-400">
               Back to title
             </Link>
           </div>
@@ -949,6 +991,7 @@ export function MangaReader({
                   }
                 : undefined
             }
+            onExitChapter={nextChapter ? undefined : exitToBook}
           />
         )}
         {!loading && !error && mode !== "webtoon" && currentImage && (
@@ -970,10 +1013,13 @@ export function MangaReader({
           <header className="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-black/80 to-transparent">
             <div className="pointer-events-auto flex items-center gap-2 px-3 py-3">
               <Link
-                href={`/books/${bookId}`}
+                href={bookHref}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-white/10"
                 aria-label="Back"
-                onClick={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  saveChapterView();
+                }}
               >
                 <ArrowLeft className="h-5 w-5" />
               </Link>
@@ -1051,19 +1097,32 @@ export function MangaReader({
                     );
                   })}
                 </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={!nextChapter}
-                  onClick={() => {
-                    markCompleteAndMaybeAdvance();
-                    goToChapter(nextChapter?.id);
-                  }}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+                {nextChapter ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      markCompleteAndMaybeAdvance();
+                      goToChapter(nextChapter.id);
+                    }}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Link
+                    href={bookHref}
+                    className={buttonVariants({ size: "sm", variant: "secondary" })}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      saveChapterView();
+                    }}
+                  >
+                    Exit
+                    <ChevronRight className="h-4 w-4" />
+                  </Link>
+                )}
               </div>
               <div className="flex items-center justify-between text-xs text-zinc-400">
                 <span className="inline-flex items-center gap-1.5">
@@ -1080,6 +1139,21 @@ export function MangaReader({
               </div>
             </div>
           </footer>
+      )}
+
+      {!nextChapter && !menuOpen && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-end p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:hidden">
+          <Link
+            href={bookHref}
+            className="pointer-events-auto rounded-full bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-black/40"
+            onClick={(event) => {
+              event.stopPropagation();
+              saveChapterView();
+            }}
+          >
+            Exit
+          </Link>
+        </div>
       )}
 
       {chapterListOpen && (
@@ -1179,11 +1253,11 @@ function PagedImage({ url, alt }: { url: string; alt: string }) {
   }, [url, shown]);
 
   return (
-    <div className="flex min-h-dvh items-center justify-center">
+    <div className="flex h-dvh items-center justify-center overflow-hidden">
       <ReaderPageImage
         url={shown}
         alt={alt}
-        className="max-h-dvh max-w-full object-contain"
+        className="block max-h-dvh max-w-full object-contain"
       />
     </div>
   );
@@ -1194,12 +1268,14 @@ function WebtoonViewer({
   restoreScroll,
   onScrollProgress,
   onNextChapter,
+  onExitChapter,
   onRestoreSettled,
 }: {
   pages: PagePayload[];
   restoreScroll: number | "end";
   onScrollProgress: () => void;
   onNextChapter?: () => void;
+  onExitChapter?: () => void;
   onRestoreSettled?: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1334,6 +1410,20 @@ function WebtoonViewer({
             }}
           >
             Next chapter
+          </button>
+        </div>
+      )}
+      {onExitChapter && (
+        <div className="flex justify-center py-10">
+          <button
+            type="button"
+            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500"
+            onClick={(event) => {
+              event.stopPropagation();
+              onExitChapter();
+            }}
+          >
+            Back to title
           </button>
         </div>
       )}

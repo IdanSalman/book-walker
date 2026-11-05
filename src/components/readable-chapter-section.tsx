@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import { ChapterList } from "@/components/chapter-list";
 import { RefreshReadableButton } from "@/components/refresh-readable-button";
 import { getMangaWithChapters } from "@/lib/reader/resolve";
@@ -32,7 +34,11 @@ export async function ReadableChapterSection({
     chapters = resolved.chapters;
     sourceName = resolved.sourceName;
     sourceUrl = resolved.sourceUrl;
-    await applyResolvedListing(book, resolved);
+    after(() => {
+      void applyResolvedListing(book, resolved).catch(() => {
+        /* next visit can repair the cover */
+      });
+    });
   } catch (error) {
     errorMessage =
       error instanceof Error

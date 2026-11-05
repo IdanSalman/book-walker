@@ -29,6 +29,7 @@ import {
   type ReaderBookRef,
   type ReaderSourceEngine,
 } from "@/lib/reader/source-engine";
+import { sortReaderChapters } from "@/lib/reader/chapter-sort";
 import { decodeChapterId } from "@/lib/reader/source-id";
 import type { ReaderPage, ResolvedManga } from "@/lib/reader/types";
 import { ensureBuiltInSources } from "@/lib/sources/ensure";
@@ -240,7 +241,9 @@ async function resolveMangaFromEngines(
 ): Promise<ResolvedManga> {
   if (book.category === "BOOK") {
     const engine = await currentReadingEngine(book);
-    return (engine ?? openLibraryEngine).resolveManga(book);
+    return sortResolvedChapters(
+      await (engine ?? openLibraryEngine).resolveManga(book),
+    );
   }
 
   const engines = orderedEngines(await enabledReadingEngines(), book);
@@ -249,7 +252,7 @@ async function resolveMangaFromEngines(
   for (const engine of engines) {
     try {
       const resolved = await engine.resolveManga(book);
-      if (resolved.chapters.length > 0) return resolved;
+      if (resolved.chapters.length > 0) return sortResolvedChapters(resolved);
       errors.push(`${engine.name}: no readable chapters`);
     } catch (error) {
       errors.push(
@@ -263,6 +266,13 @@ async function resolveMangaFromEngines(
       ? errors.join(" ")
       : "No readable chapters were found on the enabled Mihon sources.",
   );
+}
+
+function sortResolvedChapters(resolved: ResolvedManga): ResolvedManga {
+  return {
+    ...resolved,
+    chapters: sortReaderChapters(resolved.chapters),
+  };
 }
 
 export async function getMangaWithChapters(

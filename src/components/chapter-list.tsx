@@ -8,6 +8,7 @@ import { OpenOnSourceLink } from "@/components/open-on-source-link";
 import { RefreshReadableButton } from "@/components/refresh-readable-button";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { sortReaderChapters } from "@/lib/reader/chapter-sort";
 import {
   chapterListRows,
   continueChapterIndex,
@@ -36,17 +37,18 @@ export function ChapterList({
   variant?: "chapters" | "pages";
 }) {
   const [newestFirst, setNewestFirst] = useState(true);
+  const readingOrder = useMemo(() => sortReaderChapters(chapters), [chapters]);
 
-  const continueIndex = continueChapterIndex(currentPage, chapters);
-  const continueChapter = chapters[continueIndex];
+  const continueIndex = continueChapterIndex(currentPage, readingOrder);
+  const continueChapter = readingOrder[continueIndex];
   const missingCount = useMemo(
-    () => missingChapterCount(chapters),
-    [chapters],
+    () => missingChapterCount(readingOrder),
+    [readingOrder],
   );
   const orderedRows = useMemo(() => {
-    const rows = chapterListRows(chapters);
+    const rows = chapterListRows(readingOrder);
     return newestFirst ? [...rows].reverse() : rows;
-  }, [chapters, newestFirst]);
+  }, [readingOrder, newestFirst]);
 
   if (chapters.length === 0) {
     return (
