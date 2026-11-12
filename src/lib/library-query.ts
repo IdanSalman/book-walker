@@ -243,3 +243,23 @@ export function libraryPageHref(params: LibraryHrefParams): string {
   const query = search.toString();
   return query ? `/library?${query}` : "/library";
 }
+
+/** Page of the signed-in user's library. `hideCaughtUp` is the library toggle, not the store preference. */
+export function libraryBooksApiPath(
+  filterParams: LibraryHrefParams,
+  page: number,
+  hideCaughtUp: boolean,
+): string {
+  const search = new URLSearchParams();
+  if (filterParams.collection) search.set("collection", filterParams.collection);
+  if (filterParams.category) search.set("category", filterParams.category);
+  if (filterParams.status) search.set("status", filterParams.status);
+  if (filterParams.publication) search.set("publication", filterParams.publication);
+  if (filterParams.q) search.set("q", filterParams.q);
+  if (filterParams.sort && filterParams.sort !== "updated-desc") {
+    search.set("sort", filterParams.sort);
+  }
+  search.set("hideRead", hideCaughtUp ? "1" : "0");
+  search.set("page", String(page));
+  return `/api/library/books?${search}`;
+}

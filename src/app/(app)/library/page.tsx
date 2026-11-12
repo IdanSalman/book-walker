@@ -1,6 +1,12 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { Suspense } from "react";
 
+import {
+  LibraryCaughtUpProvider,
+  LibraryCaughtUpToggle,
+} from "@/components/library-caught-up-provider";
+import { LibraryCollectionBar } from "@/components/library-collection-bar";
 import { LibraryCollectionsManager } from "@/components/library-collections-manager";
 import { LibraryFilters } from "@/components/library-filters";
 import {
@@ -13,6 +19,10 @@ import {
   UNCATEGORIZED_NAME,
   UNCATEGORIZED_SLUG,
 } from "@/lib/library-categories";
+import {
+  LIBRARY_HIDE_CAUGHT_UP_COOKIE,
+  readHideCaughtUpCookie,
+} from "@/lib/library-caught-up-view";
 import { getLibraryNav } from "@/lib/library-nav";
 import {
   libraryPageHref,
@@ -44,7 +54,10 @@ export default async function LibraryPage({
     isAdmin && Boolean(session.user.showLibraryAdminControls);
   const showEntryMeta = !isAdmin || showAdminControls;
   const hideAdult = session.user.hideAdultContent ?? true;
-  const hideRead = session.user.hideReadTitles ?? false;
+  const cookieStore = await cookies();
+  const hideCaughtUp = readHideCaughtUpCookie(
+    cookieStore.get(LIBRARY_HIDE_CAUGHT_UP_COOKIE)?.value,
+  );
   const {
     collection: collectionParam,
     category: categoryParam,
@@ -64,7 +77,7 @@ export default async function LibraryPage({
     selectedType.value === "MANGA" ||
     selectedType.value === "LIGHT_NOVEL";
 
-  const nav = await getLibraryNav(session.user.id, hideAdult, hideRead);
+  const nav = await getLibraryNav(session.user.id, hideAdult);
 
   const selectedCollection =
     collectionParam === UNCATEGORIZED_SLUG
@@ -87,130 +100,85 @@ export default async function LibraryPage({
     ? PUBLICATION_STATUS_LABELS[publication].toLowerCase()
     : null;
 
-  const resultsKey = libraryPageHref(filterParams);
+  const resultsKey = `${libraryPageHref(filterParams)}|caught:${hideCaughtUp ? "1" : "0"}`;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-zinc-50">My library</h1>
+    <LibraryCaughtUpProvider initialHideCaughtUp={hideCaughtUp}>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-zinc-50">My library</h1>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <LibraryCaughtUpToggle />
+            <Link
+              href="/library/add"
+              className="rounded-lg border border-violet-500/40 bg-violet-950/30 px-4 py-2 text-sm font-medium text-violet-200 transition hover:border-violet-400 hover:bg-violet-950/50"
+            >
+              Browse store
+            </Link>
+          </div>
         </div>
-        <Link
-          href="/library/add"
-          className="rounded-lg border border-violet-500/40 bg-violet-950/30 px-4 py-2 text-sm font-medium text-violet-200 transition hover:border-violet-400 hover:bg-violet-950/50"
-        >
-          Browse store
-        </Link>
-      </div>
 
-      <div className="flex flex-wrap gap-2">
-        <FilterChip
-          href={libraryPageHref({ ...filterParams, collection: undefined })}
-          active={!selectedCollection}
-        >
-          All
-          <ChipCount>{nav.totalCount}</ChipCount>
-        </FilterChip>
-        {nav.categories.map((cat) => (
-          <FilterChip
-            key={cat.id}
-            href={libraryPageHref({ ...filterParams, collection: cat.slug })}
-            active={selectedCollection?.slug === cat.slug}
-          >
-            {cat.name}
-            <ChipCount>{cat.count}</ChipCount>
-          </FilterChip>
-        ))}
-        {nav.uncategorizedCount > 0 && (
-          <FilterChip
-            href={libraryPageHref({
-              ...filterParams,
-              collection: UNCATEGORIZED_SLUG,
-            })}
-            active={selectedCollection?.slug === UNCATEGORIZED_SLUG}
-          >
-            {UNCATEGORIZED_NAME}
-            <ChipCount>{nav.uncategorizedCount}</ChipCount>
-          </FilterChip>
-        )}
-      </div>
-
-      <LibraryCollectionsManager
-        categories={nav.categories}
-        currentSlug={
-          selectedCollection?.slug === UNCATEGORIZED_SLUG
-            ? undefined
-            : selectedCollection?.slug
-        }
-        hrefParams={filterParams}
-      />
-
-      <Suspense>
-        <StoreBookSearch
-          defaultValue={query}
-          actionPath="/library"
-          placeholder="Search your library…"
-        />
-      </Suspense>
-
-      <Suspense>
-        <LibraryFilters
-          category={categoryParam}
-          status={status}
-          publication={publicationParam}
-          sort={sort}
-          showPublicationFilter={showPublicationFilter}
-        />
-      </Suspense>
-
-      <Suspense key={resultsKey} fallback={<LibraryGridSkeleton />}>
-        <LibraryResults
-          userId={session.user.id}
-          showEntryMeta={showEntryMeta}
-          showAdminControls={showAdminControls}
-          hideAdult={hideAdult}
-          hideRead={hideRead}
-          librarySize={nav.librarySize}
+        <LibraryCollectionBar
+          categories={nav.categories}
+          uncategorizedCount={nav.uncategorizedCount}
+          uncategorizedCaughtUpCount={nav.uncategorizedCaughtUpCount}
           totalCount={nav.totalCount}
+          totalCaughtUpCount={nav.totalCaughtUpCount}
+          selectedSlug={selectedCollection?.slug}
           filterParams={filterParams}
-          sort={sort}
-          pageParam={pageParam}
-          collectionLabel={selectedCollection?.name}
-          typeLabel={selectedType?.label}
-          statusLabel={statusLabel}
-          publicationLabel={publicationLabel}
-          queryLabel={query || undefined}
         />
-      </Suspense>
-    </div>
-  );
-}
 
-function ChipCount({ children }: { children: React.ReactNode }) {
-  return <span className="text-[11px] opacity-70">{children}</span>;
-}
+        <LibraryCollectionsManager
+          categories={nav.categories}
+          currentSlug={
+            selectedCollection?.slug === UNCATEGORIZED_SLUG
+              ? undefined
+              : selectedCollection?.slug
+          }
+          hrefParams={filterParams}
+        />
 
-function FilterChip({
-  href,
-  active,
-  children,
-}: {
-  href: string;
-  active: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      scroll={false}
-      prefetch
-      className={
-        active
-          ? "inline-flex items-center gap-1.5 rounded-full bg-violet-600 px-3 py-1.5 text-sm font-medium text-white"
-          : "inline-flex items-center gap-1.5 rounded-full border border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 transition hover:border-zinc-500 hover:text-zinc-200"
-      }
-    >
-      {children}
-    </Link>
+        <Suspense>
+          <StoreBookSearch
+            defaultValue={query}
+            actionPath="/library"
+            placeholder="Search your library…"
+          />
+        </Suspense>
+
+        <Suspense>
+          <LibraryFilters
+            category={categoryParam}
+            status={status}
+            publication={publicationParam}
+            sort={sort}
+            showPublicationFilter={showPublicationFilter}
+          />
+        </Suspense>
+
+        <Suspense key={resultsKey} fallback={<LibraryGridSkeleton />}>
+          <LibraryResults
+            userId={session.user.id}
+            showEntryMeta={showEntryMeta}
+            showAdminControls={showAdminControls}
+            hideAdult={hideAdult}
+            hideCaughtUp={hideCaughtUp}
+            librarySize={nav.librarySize}
+            totalCount={nav.totalCount}
+            totalCaughtUpCount={nav.totalCaughtUpCount}
+            filterParams={filterParams}
+            sort={sort}
+            pageParam={pageParam}
+            collectionLabel={selectedCollection?.name}
+            typeLabel={selectedType?.label}
+            statusLabel={statusLabel}
+            publicationLabel={publicationLabel}
+            queryLabel={query || undefined}
+          />
+        </Suspense>
+      </div>
+    </LibraryCaughtUpProvider>
   );
 }

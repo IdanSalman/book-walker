@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   const result = await fetchLibraryPage({
     userId: session.user.id,
     hideAdult: session.user.hideAdultContent ?? true,
-    hideRead: session.user.hideReadTitles ?? false,
+    hideRead: url.searchParams.get("hideRead") === "1",
     filterParams,
     sort: parseLibrarySort(filterParams.sort),
     page: parseLibraryPage(url.searchParams.get("page") ?? undefined),

@@ -9,11 +9,13 @@ import { BookCard } from "@/components/book-card";
 import { PagedInfiniteList } from "@/components/paged-infinite-list";
 import { Badge } from "@/components/ui/badge";
 import {
+  libraryBooksApiPath,
   libraryPageHref,
   type LibraryHrefParams,
   type LibraryPageResult,
   type LibraryUserBook,
 } from "@/lib/library-query";
+import { isCaughtUpTitle } from "@/lib/library-caught-up-view";
 import { isReadableInApp } from "@/lib/reader/access";
 
 function LibraryBookTile({
@@ -83,6 +85,8 @@ export function LibraryBookGrid({
   page,
   hasMore,
   filterParams,
+  hideCaughtUp,
+  listKey,
   showEntryMeta,
   showAdminControls,
 }: {
@@ -90,51 +94,56 @@ export function LibraryBookGrid({
   page: number;
   hasMore: boolean;
   filterParams: LibraryHrefParams;
+  hideCaughtUp: boolean;
+  listKey: string;
   showEntryMeta: boolean;
   showAdminControls: boolean;
 }) {
   const fetchPage = useCallback(
     async (nextPage: number) => {
-      const params = new URLSearchParams();
-      if (filterParams.collection) params.set("collection", filterParams.collection);
-      if (filterParams.category) params.set("category", filterParams.category);
-      if (filterParams.status) params.set("status", filterParams.status);
-      if (filterParams.publication) {
-        params.set("publication", filterParams.publication);
-      }
-      if (filterParams.q) params.set("q", filterParams.q);
-      if (filterParams.sort) params.set("sort", filterParams.sort);
-      params.set("page", String(nextPage));
-
-      const response = await fetch(`/api/library/books?${params}`);
+      const response = await fetch(
+        libraryBooksApiPath(filterParams, nextPage, hideCaughtUp),
+      );
       if (!response.ok) throw new Error("Failed to load library page");
       const data = (await response.json()) as LibraryPageResult;
       return { items: data.items, hasMore: data.hasMore };
     },
-    [filterParams],
+    [filterParams, hideCaughtUp],
   );
 
   return (
     <PagedInfiniteList
-      resetKey={libraryPageHref({ ...filterParams, page })}
+      resetKey={`${libraryPageHref({ ...filterParams, page })}|${listKey}`}
       initialPage={page}
       initialItems={items}
       initialHasMore={hasMore}
       fetchPage={fetchPage}
       pageHref={(visiblePage) => libraryPageHref({ ...filterParams, page: visiblePage })}
-      renderPage={(pageItems, pageNumber) => (
-        <div className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 md:grid-cols-4">
-          {pageItems.map((userBook, index) => (
-            <LibraryBookTile
-              key={userBook.id}
-              userBook={userBook}
-              index={pageNumber === 1 ? index : index + 8}
-              showEntryMeta={showEntryMeta}
-              showAdminControls={showAdminControls}
-            />
-          ))}
-        </div>
-      )}
+      renderPage={(pageItems, pageNumber) => {
+        const visible =
+          hideCaughtUp && filterParams.status !== "COMPLETED"
+            ? pageItems.filter(
+                (userBook) =>
+                  !isCaughtUpTitle(
+                    userBook.currentPage,
+                    userBook.book.totalPages,
+                  ),
+              )
+            : pageItems;
+        return (
+          <div className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 md:grid-cols-4">
+            {visible.map((userBook, index) => (
+              <LibraryBookTile
+                key={userBook.id}
+                userBook={userBook}
+                index={pageNumber === 1 ? index : index + 8}
+                showEntryMeta={showEntryMeta}
+                showAdminControls={showAdminControls}
+              />
+            ))}
+          </div>
+        );
+      }}
     />
   );
 }
