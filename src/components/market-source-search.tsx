@@ -260,6 +260,10 @@ export function MarketSourceSearch({
     active?.kind === "listing"
       ? sources.find((source) => source.key === active.sourceKey)
       : null;
+  const visibleHits = hits.filter(
+    (hit) => hit.items.length > 0 || Boolean(hit.error),
+  );
+  const anyEntries = hits.some((hit) => hit.items.length > 0);
 
   return (
     <div className="space-y-6">
@@ -365,14 +369,20 @@ export function MarketSourceSearch({
             </p>
           )}
 
-          {hits.length === 0 && pending.length === 0 && (
+          {pending.length === 0 && !anyEntries && (
             <div className="rounded-xl border border-dashed border-zinc-800 px-6 py-12 text-center">
-              <p className="text-zinc-400">No sources returned titles.</p>
+              <p className="text-zinc-400">
+                {active.kind === "text"
+                  ? `No titles found for “${active.query}”.`
+                  : listingSource
+                    ? `No titles found on ${listingSource.name}.`
+                    : "No titles found."}
+              </p>
             </div>
           )}
 
           <div className="space-y-5">
-            {hits.map((hit) => (
+            {visibleHits.map((hit) => (
               <MarketSourceSection
                 key={`${searchToken}:${hit.source.key}`}
                 hit={hit}
@@ -547,6 +557,8 @@ function MarketSourceSection({
     [hit.source.key, query, view],
   );
 
+  if (!hit.error && hit.items.length === 0) return null;
+
   return (
     <section className="overflow-hidden rounded-xl border border-zinc-800">
       <div className="flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
@@ -565,10 +577,6 @@ function MarketSourceSection({
       <div className="space-y-4 p-4">
         {hit.error ? (
           <p className="text-sm text-zinc-400">{hit.error}</p>
-        ) : hit.items.length === 0 ? (
-          <p className="text-sm text-zinc-500">
-            No titles from {hit.source.name}.
-          </p>
         ) : (
           <PagedInfiniteList
             resetKey={`${hit.source.key}:${view ?? ""}:${query ?? ""}`}
