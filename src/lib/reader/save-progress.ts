@@ -79,10 +79,6 @@ export async function saveReaderProgress(
     status = "READING";
   }
 
-  if (currentPage === userBook.currentPage && status === userBook.status) {
-    return {};
-  }
-
   await prisma.userBook.update({
     where: {
       userId_bookId: {
@@ -90,7 +86,7 @@ export async function saveReaderProgress(
         bookId,
       },
     },
-    data: { currentPage, status },
+    data: { currentPage, status, lastReadAt: new Date() },
   });
 
   revalidateUserLibrary(userId, bookId);

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { BookCard } from "@/components/book-card";
+import { ContinueSuggestions } from "@/components/continue-suggestions";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { CATEGORIES } from "@/lib/categories";
@@ -11,12 +12,13 @@ import {
 import { hideAdultUserBookFilter } from "@/lib/adult-content";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { loadContinueSuggestions } from "@/lib/suggestions/load";
 
 export default async function DashboardPage() {
   const session = await requireUser();
   const hideAdult = session.user.hideAdultContent ?? true;
 
-  const [stats, recent] = await Promise.all([
+  const [stats, recent, suggestions] = await Promise.all([
     getDashboardLibraryStats(session.user.id, hideAdult),
     prisma.userBook.findMany({
       where: {
@@ -27,6 +29,7 @@ export default async function DashboardPage() {
       take: 8,
       select: DASHBOARD_RECENT_SELECT,
     }),
+    loadContinueSuggestions(session.user.id, hideAdult),
   ]);
 
   const collectionCards = [
@@ -58,13 +61,16 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-10">
-      <div>
-        <h1 className="text-3xl font-bold text-zinc-50">Dashboard</h1>
-        <p className="mt-1 text-zinc-400">
-          Welcome back{session.user.name ? `, ${session.user.name}` : ""}.
-          You have {stats.totalCount} title
-          {stats.totalCount === 1 ? "" : "s"} in your library.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-zinc-50">Dashboard</h1>
+          <p className="mt-1 text-zinc-400">
+            Welcome back{session.user.name ? `, ${session.user.name}` : ""}.
+            You have {stats.totalCount} title
+            {stats.totalCount === 1 ? "" : "s"} in your library.
+          </p>
+        </div>
+        <ContinueSuggestions suggestions={suggestions} />
       </div>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
