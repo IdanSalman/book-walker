@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { AddToLibraryButton } from "@/components/add-to-library-button";
+import { LiveChapterCount, ChapterTotalProvider } from "@/components/chapter-total";
 import { AdminBookPanel } from "@/components/admin-book-panel";
 import { CoverImage } from "@/components/cover-image";
 import { ReadableChapterSection } from "@/components/readable-chapter-section";
@@ -20,8 +21,6 @@ import { genreStoreHref, storePageHref } from "@/lib/store-query";
 import {
   PUBLICATION_STATUS_LABELS,
   isOngoingPublication,
-  pagesFieldLabel,
-  pagesMetadataLabel,
 } from "@/lib/publication";
 
 export default async function BookDetailPage({
@@ -83,6 +82,7 @@ export default async function BookDetailPage({
   });
 
   return (
+    <ChapterTotalProvider totalPages={book.totalPages}>
     <div className="grid gap-8 lg:grid-cols-[240px_1fr]">
       <div className="space-y-4">
         <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
@@ -135,9 +135,7 @@ export default async function BookDetailPage({
         </div>
 
         <dl className="grid gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 sm:grid-cols-2">
-          <MetadataItem label={pagesFieldLabel(book.category)}>
-            {pagesMetadataLabel(book)}
-          </MetadataItem>
+        <LiveChapterCount book={book} />
 
           {(book.category === "MANGA" || book.category === "LIGHT_NOVEL") &&
             book.publicationStatus !== "UNKNOWN" && (
@@ -251,6 +249,7 @@ export default async function BookDetailPage({
         )}
       </div>
     </div>
+    </ChapterTotalProvider>
   );
 }
 

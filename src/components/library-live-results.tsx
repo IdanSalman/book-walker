@@ -23,7 +23,7 @@ type LibraryView = {
 
 type LibraryLiveResultsProps = {
   initial: LibraryPageResult;
-  serverHideCaughtUp: boolean;
+  serverOnlyCaughtUp: boolean;
   filterParams: LibraryHrefParams;
   showEntryMeta: boolean;
   showAdminControls: boolean;
@@ -40,7 +40,7 @@ type LibraryLiveResultsProps = {
 
 export function LibraryLiveResults({
   initial,
-  serverHideCaughtUp,
+  serverOnlyCaughtUp,
   filterParams,
   showEntryMeta,
   showAdminControls,
@@ -54,7 +54,7 @@ export function LibraryLiveResults({
   publicationLabel,
   queryLabel,
 }: LibraryLiveResultsProps) {
-  const { hideCaughtUp, setHideCaughtUp } = useLibraryCaughtUp();
+  const { onlyCaughtUp, setOnlyCaughtUp } = useLibraryCaughtUp();
   const [view, setView] = useState<LibraryView>({
     items: initial.items,
     total: initial.total,
@@ -62,11 +62,11 @@ export function LibraryLiveResults({
     hasMore: initial.hasMore,
     revision: 0,
   });
-  const [appliedHide, setAppliedHide] = useState(serverHideCaughtUp);
+  const [appliedOnly, setAppliedOnly] = useState(serverOnlyCaughtUp);
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef(0);
   const filterKey = libraryPageHref(filterParams);
-  const pending = hideCaughtUp !== appliedHide;
+  const pending = onlyCaughtUp !== appliedOnly;
 
   useEffect(() => {
     if (!pending) return;
@@ -78,13 +78,13 @@ export function LibraryLiveResults({
     void (async () => {
       try {
         const response = await fetch(
-          libraryBooksApiPath(filterParams, 1, hideCaughtUp),
+          libraryBooksApiPath(filterParams, 1, onlyCaughtUp),
           { signal: controller.signal },
         );
         if (!response.ok) throw new Error("Failed to load library");
         const data = (await response.json()) as LibraryPageResult;
         if (requestId !== requestRef.current) return;
-        setAppliedHide(hideCaughtUp);
+        setAppliedOnly(onlyCaughtUp);
         setView((current) => ({
           items: data.items,
           total: data.total,
@@ -96,16 +96,16 @@ export function LibraryLiveResults({
         if (controller.signal.aborted) return;
         if (requestId !== requestRef.current) return;
         setError("Could not update the library. The previous list is still showing.");
-        setHideCaughtUp(appliedHide);
+        setOnlyCaughtUp(appliedOnly);
       }
     })();
 
     return () => controller.abort();
-  }, [appliedHide, filterKey, filterParams, hideCaughtUp, pending, setHideCaughtUp]);
+  }, [appliedOnly, filterKey, filterParams, onlyCaughtUp, pending, setOnlyCaughtUp]);
 
-  const visibleLibrary = hideCaughtUp
-    ? Math.max(0, totalCount - totalCaughtUpCount)
-    : totalCount;
+  const visibleLibrary = onlyCaughtUp
+    ? totalCaughtUpCount
+    : Math.max(0, totalCount - totalCaughtUpCount);
 
   if (view.total === 0 && !pending) {
     return (
@@ -115,19 +115,19 @@ export function LibraryLiveResults({
           <p className="text-zinc-400">
             {librarySize === 0
               ? "Your library is empty."
-              : hideAdult && hideCaughtUp && visibleLibrary === 0
-                ? "Adult titles are hidden, and titles with no new chapters are hidden."
-                : hideAdult && visibleLibrary === 0
-                  ? "Adult titles are hidden."
-                  : hideCaughtUp && visibleLibrary === 0
-                    ? "Titles with no new chapters are hidden. Turn the library toggle on to show them."
+              : hideAdult && totalCount === 0
+                ? "Adult titles are hidden."
+                : onlyCaughtUp && visibleLibrary === 0
+                  ? "No titles with no new chapters are in your library."
+                  : !onlyCaughtUp && visibleLibrary === 0
+                    ? "Every title in view has no chapters left. Turn on No new chapters to see them."
                     : queryLabel
                       ? `No titles match “${queryLabel}”.`
-                      : hideCaughtUp
-                        ? "No titles with chapters left match these filters."
+                      : onlyCaughtUp
+                        ? "No titles with no new chapters match these filters."
                         : "No titles match these filters."}
           </p>
-          {hideAdult && librarySize > 0 && visibleLibrary === 0 ? (
+          {hideAdult && librarySize > 0 && totalCount === 0 ? (
             <Link
               href="/account"
               className="mt-2 inline-block text-sm text-violet-400 hover:text-violet-300"
@@ -184,7 +184,7 @@ export function LibraryLiveResults({
           page={view.page}
           hasMore={pending ? false : view.hasMore}
           filterParams={filterParams}
-          hideCaughtUp={hideCaughtUp}
+          onlyCaughtUp={onlyCaughtUp}
           listKey={String(view.revision)}
           showEntryMeta={showEntryMeta}
           showAdminControls={showAdminControls}

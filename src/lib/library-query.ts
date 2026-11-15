@@ -8,7 +8,7 @@ import { hideAdultBookFilter } from "@/lib/adult-content";
 import { containsTextVariants } from "@/lib/contains-text";
 import {
   getCaughtUpBookIds,
-  hideReadUserBookFilter,
+  libraryCaughtUpBookFilter,
 } from "@/lib/hide-read-titles";
 import {
   LIBRARY_PAGE_SIZE,
@@ -59,7 +59,7 @@ export function buildLibraryWhere(
     publication?: string;
     q?: string;
     hideAdult?: boolean;
-    hideRead?: boolean;
+    onlyCaughtUp?: boolean;
     caughtUpBookIds?: string[];
   },
 ): Prisma.UserBookWhereInput {
@@ -105,8 +105,8 @@ export function buildLibraryWhere(
     userId,
     ...collectionFilter,
     ...(status ? { status } : {}),
-    ...hideReadUserBookFilter(
-      Boolean(params.hideRead),
+    ...libraryCaughtUpBookFilter(
+      Boolean(params.onlyCaughtUp),
       params.caughtUpBookIds ?? [],
       status,
     ),
@@ -191,14 +191,12 @@ export type LibraryPageResult = {
 export async function fetchLibraryPage(options: {
   userId: string;
   hideAdult: boolean;
-  hideRead: boolean;
+  onlyCaughtUp: boolean;
   filterParams: LibraryHrefParams;
   sort: LibrarySort;
   page: number;
 }): Promise<LibraryPageResult> {
-  const caughtUpBookIds = options.hideRead
-    ? await getCaughtUpBookIds(options.userId)
-    : [];
+  const caughtUpBookIds = await getCaughtUpBookIds(options.userId);
   const where = buildLibraryWhere(options.userId, {
     collection: options.filterParams.collection,
     category: options.filterParams.category,
@@ -206,7 +204,7 @@ export async function fetchLibraryPage(options: {
     publication: options.filterParams.publication,
     q: options.filterParams.q,
     hideAdult: options.hideAdult,
-    hideRead: options.hideRead,
+    onlyCaughtUp: options.onlyCaughtUp,
     caughtUpBookIds,
   });
 
@@ -244,11 +242,11 @@ export function libraryPageHref(params: LibraryHrefParams): string {
   return query ? `/library?${query}` : "/library";
 }
 
-/** Page of the signed-in user's library. `hideCaughtUp` is the library toggle, not the store preference. */
+/** Page of the signed-in user's library. `onlyCaughtUp` is the library shelf, not the store preference. */
 export function libraryBooksApiPath(
   filterParams: LibraryHrefParams,
   page: number,
-  hideCaughtUp: boolean,
+  onlyCaughtUp: boolean,
 ): string {
   const search = new URLSearchParams();
   if (filterParams.collection) search.set("collection", filterParams.collection);
@@ -259,7 +257,7 @@ export function libraryBooksApiPath(
   if (filterParams.sort && filterParams.sort !== "updated-desc") {
     search.set("sort", filterParams.sort);
   }
-  search.set("hideRead", hideCaughtUp ? "1" : "0");
+  search.set("caughtUp", onlyCaughtUp ? "only" : "reading");
   search.set("page", String(page));
   return `/api/library/books?${search}`;
 }

@@ -1,8 +1,11 @@
 import { after } from "next/server";
 
 import { ChapterList } from "@/components/chapter-list";
+import { PublishChapterTotal } from "@/components/chapter-total";
 import { RefreshReadableButton } from "@/components/refresh-readable-button";
+import { latestChapterNumber } from "@/lib/reader/chapter-progress";
 import { getMangaWithChapters } from "@/lib/reader/resolve";
+import { persistChapterCountIncrease } from "@/lib/reader/sync-chapter-count";
 import type { ReaderChapter } from "@/lib/reader/types";
 import { applyResolvedListing } from "@/lib/sources/repair-cover";
 import type { BookCategory } from "@prisma/client";
@@ -21,6 +24,7 @@ export async function ReadableChapterSection({
     externalId: string | null;
     author: string | null;
     category: BookCategory;
+    totalPages: number;
   };
   currentPage: number;
 }) {
@@ -39,6 +43,15 @@ export async function ReadableChapterSection({
         /* next visit can repair the cover */
       });
     });
+    if (book.category === "MANGA" || book.category === "LIGHT_NOVEL") {
+      await persistChapterCountIncrease(
+        book.id,
+        book.totalPages,
+        resolved.chapters,
+      ).catch(() => {
+        /* the list still renders; the next visit can save the count */
+      });
+    }
   } catch (error) {
     errorMessage =
       error instanceof Error
@@ -73,14 +86,22 @@ export async function ReadableChapterSection({
     );
   }
 
+  const chapterTotal =
+    book.category === "MANGA" || book.category === "LIGHT_NOVEL"
+      ? latestChapterNumber(chapters)
+      : null;
+
   return (
-    <ChapterList
-      bookId={book.id}
-      chapters={chapters}
-      currentPage={currentPage}
-      sourceName={sourceName}
-      sourceUrl={sourceUrl}
-      variant={book.category === "BOOK" ? "pages" : "chapters"}
-    />
+    <>
+      {chapterTotal != null && <PublishChapterTotal totalPages={chapterTotal} />}
+      <ChapterList
+        bookId={book.id}
+        chapters={chapters}
+        currentPage={currentPage}
+        sourceName={sourceName}
+        sourceUrl={sourceUrl}
+        variant={book.category === "BOOK" ? "pages" : "chapters"}
+      />
+    </>
   );
 }

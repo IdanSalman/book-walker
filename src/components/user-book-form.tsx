@@ -19,6 +19,7 @@ import {
 } from "@/lib/actions/library";
 import { isOngoingPublication, progressLabel } from "@/lib/publication";
 import { isReadableComic } from "@/lib/reader/access";
+import { useChapterTotal } from "@/components/chapter-total";
 
 const initialState: ActionState = {};
 
@@ -39,11 +40,13 @@ export function UserBookForm({
   const boundUpdate = updateUserBook.bind(null, book.id);
   const [state, formAction, pending] = useActionState(boundUpdate, initialState);
   const [removing, setRemoving] = useState(false);
+  const totalPages = Math.max(book.totalPages, useChapterTotal());
+  const progressBook = { ...book, totalPages };
 
   const progress =
-    book.totalPages > 0 ? (currentPage / book.totalPages) * 100 : 0;
+    totalPages > 0 ? (currentPage / totalPages) * 100 : 0;
 
-  const progressSummary = `${progressLabel(currentPage, book)}${
+  const progressSummary = `${progressLabel(currentPage, progressBook)}${
     !isOngoingPublication(book.publicationStatus)
       ? ` (${Math.round(progress)}%)`
       : ""
@@ -85,7 +88,7 @@ export function UserBookForm({
                 name="currentPage"
                 type="number"
                 min={0}
-                max={book.totalPages}
+                max={totalPages}
                 required
                 value={currentPage}
                 onChange={(e) => setCurrentPage(Number(e.target.value))}
@@ -93,7 +96,7 @@ export function UserBookForm({
               <input
                 type="range"
                 min={0}
-                max={book.totalPages}
+                max={totalPages}
                 value={currentPage}
                 onChange={(e) => setCurrentPage(Number(e.target.value))}
                 className="w-full accent-violet-500"

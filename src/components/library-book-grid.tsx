@@ -85,7 +85,7 @@ export function LibraryBookGrid({
   page,
   hasMore,
   filterParams,
-  hideCaughtUp,
+  onlyCaughtUp,
   listKey,
   showEntryMeta,
   showAdminControls,
@@ -94,7 +94,7 @@ export function LibraryBookGrid({
   page: number;
   hasMore: boolean;
   filterParams: LibraryHrefParams;
-  hideCaughtUp: boolean;
+  onlyCaughtUp: boolean;
   listKey: string;
   showEntryMeta: boolean;
   showAdminControls: boolean;
@@ -102,13 +102,13 @@ export function LibraryBookGrid({
   const fetchPage = useCallback(
     async (nextPage: number) => {
       const response = await fetch(
-        libraryBooksApiPath(filterParams, nextPage, hideCaughtUp),
+        libraryBooksApiPath(filterParams, nextPage, onlyCaughtUp),
       );
       if (!response.ok) throw new Error("Failed to load library page");
       const data = (await response.json()) as LibraryPageResult;
       return { items: data.items, hasMore: data.hasMore };
     },
-    [filterParams, hideCaughtUp],
+    [filterParams, onlyCaughtUp],
   );
 
   return (
@@ -121,15 +121,15 @@ export function LibraryBookGrid({
       pageHref={(visiblePage) => libraryPageHref({ ...filterParams, page: visiblePage })}
       renderPage={(pageItems, pageNumber) => {
         const visible =
-          hideCaughtUp && filterParams.status !== "COMPLETED"
-            ? pageItems.filter(
-                (userBook) =>
-                  !isCaughtUpTitle(
-                    userBook.currentPage,
-                    userBook.book.totalPages,
-                  ),
-              )
-            : pageItems;
+          !onlyCaughtUp && filterParams.status === "COMPLETED"
+            ? pageItems
+            : pageItems.filter((userBook) => {
+                const caughtUp = isCaughtUpTitle(
+                  userBook.currentPage,
+                  userBook.book.totalPages,
+                );
+                return onlyCaughtUp ? caughtUp : !caughtUp;
+              });
         return (
           <div className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 md:grid-cols-4">
             {visible.map((userBook, index) => (

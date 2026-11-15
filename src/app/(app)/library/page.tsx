@@ -20,8 +20,8 @@ import {
   UNCATEGORIZED_SLUG,
 } from "@/lib/library-categories";
 import {
-  LIBRARY_HIDE_CAUGHT_UP_COOKIE,
-  readHideCaughtUpCookie,
+  LIBRARY_CAUGHT_UP_VIEW_COOKIE,
+  readLibraryCaughtUpMode,
 } from "@/lib/library-caught-up-view";
 import { getLibraryNav } from "@/lib/library-nav";
 import {
@@ -55,9 +55,10 @@ export default async function LibraryPage({
   const showEntryMeta = !isAdmin || showAdminControls;
   const hideAdult = session.user.hideAdultContent ?? true;
   const cookieStore = await cookies();
-  const hideCaughtUp = readHideCaughtUpCookie(
-    cookieStore.get(LIBRARY_HIDE_CAUGHT_UP_COOKIE)?.value,
-  );
+  const onlyCaughtUp =
+    readLibraryCaughtUpMode(
+      cookieStore.get(LIBRARY_CAUGHT_UP_VIEW_COOKIE)?.value,
+    ) === "only";
   const {
     collection: collectionParam,
     category: categoryParam,
@@ -100,10 +101,10 @@ export default async function LibraryPage({
     ? PUBLICATION_STATUS_LABELS[publication].toLowerCase()
     : null;
 
-  const resultsKey = `${libraryPageHref(filterParams)}|caught:${hideCaughtUp ? "1" : "0"}`;
+  const resultsKey = `${libraryPageHref(filterParams)}|caught:${onlyCaughtUp ? "only" : "reading"}`;
 
   return (
-    <LibraryCaughtUpProvider initialHideCaughtUp={hideCaughtUp}>
+    <LibraryCaughtUpProvider initialOnlyCaughtUp={onlyCaughtUp}>
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -164,7 +165,7 @@ export default async function LibraryPage({
             showEntryMeta={showEntryMeta}
             showAdminControls={showAdminControls}
             hideAdult={hideAdult}
-            hideCaughtUp={hideCaughtUp}
+            onlyCaughtUp={onlyCaughtUp}
             librarySize={nav.librarySize}
             totalCount={nav.totalCount}
             totalCaughtUpCount={nav.totalCaughtUpCount}

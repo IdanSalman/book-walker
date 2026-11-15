@@ -15,7 +15,7 @@ type LibraryResultsProps = {
   showEntryMeta: boolean;
   showAdminControls: boolean;
   hideAdult: boolean;
-  hideCaughtUp: boolean;
+  onlyCaughtUp: boolean;
   librarySize: number;
   totalCount: number;
   totalCaughtUpCount: number;
@@ -34,7 +34,7 @@ export async function LibraryResults({
   showEntryMeta,
   showAdminControls,
   hideAdult,
-  hideCaughtUp,
+  onlyCaughtUp,
   librarySize,
   totalCount,
   totalCaughtUpCount,
@@ -51,7 +51,7 @@ export async function LibraryResults({
   const initial = await fetchLibraryPage({
     userId,
     hideAdult,
-    hideRead: hideCaughtUp,
+    onlyCaughtUp,
     filterParams,
     sort,
     page: requestedPage,
@@ -64,7 +64,7 @@ export async function LibraryResults({
   return (
     <LibraryLiveResults
       initial={initial}
-      serverHideCaughtUp={hideCaughtUp}
+      serverOnlyCaughtUp={onlyCaughtUp}
       filterParams={filterParams}
       showEntryMeta={showEntryMeta}
       showAdminControls={showAdminControls}

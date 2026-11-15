@@ -32,16 +32,22 @@ export async function getFullyReadLibraryMangaIds(): Promise<string[]> {
   return rows.map((row) => row.bookId);
 }
 
-export function hideReadUserBookFilter(
-  hideRead: boolean,
+/**
+ * Library shelf. `onlyCaughtUp` lists titles with no chapters left.
+ * Otherwise the shelf lists titles that still have chapters, and a Completed
+ * status filter keeps those finished titles visible.
+ */
+export function libraryCaughtUpBookFilter(
+  onlyCaughtUp: boolean,
   caughtUpBookIds: string[],
   statusFilter?: string,
 ): Prisma.UserBookWhereInput {
-  if (
-    !hideRead ||
-    caughtUpBookIds.length === 0 ||
-    statusFilter === "COMPLETED"
-  ) {
+  if (onlyCaughtUp) {
+    return {
+      bookId: { in: caughtUpBookIds.length > 0 ? caughtUpBookIds : ["__none__"] },
+    };
+  }
+  if (caughtUpBookIds.length === 0 || statusFilter === "COMPLETED") {
     return {};
   }
   return { bookId: { notIn: caughtUpBookIds } };

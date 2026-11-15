@@ -2,7 +2,7 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 
 import { hideAdultUserBookFilter } from "@/lib/adult-content";
-import { libraryNavTag } from "@/lib/cache-tags";
+import { libraryNavTag, LIBRARY_NAV_GLOBAL_TAG } from "@/lib/cache-tags";
 import { prisma } from "@/lib/prisma";
 
 export type LibraryNavCategory = {
@@ -136,6 +136,6 @@ export const getLibraryNav = cache(
     unstable_cache(
       () => loadLibraryNav(userId, hideAdult),
       ["library-nav-v2", userId, hideAdult ? "1" : "0"],
-      { tags: [libraryNavTag(userId)], revalidate: 60 },
+      { tags: [libraryNavTag(userId), LIBRARY_NAV_GLOBAL_TAG], revalidate: 60 },
     )(),
 );

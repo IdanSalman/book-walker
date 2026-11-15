@@ -39,11 +39,11 @@ export function LibraryCollectionBar({
   selectedSlug?: string;
   filterParams: LibraryHrefParams;
 }) {
-  const { hideCaughtUp } = useLibraryCaughtUp();
+  const { onlyCaughtUp } = useLibraryCaughtUp();
   const uncategorizedVisible = visibleLibraryCount(
     uncategorizedCount,
     uncategorizedCaughtUpCount,
-    hideCaughtUp,
+    onlyCaughtUp,
   );
 
   return (
@@ -54,14 +54,14 @@ export function LibraryCollectionBar({
       >
         All
         <ChipCount>
-          {visibleLibraryCount(totalCount, totalCaughtUpCount, hideCaughtUp)}
+          {visibleLibraryCount(totalCount, totalCaughtUpCount, onlyCaughtUp)}
         </ChipCount>
       </FilterChip>
       {categories.map((cat) => {
         const visible = visibleLibraryCount(
           cat.count,
           cat.caughtUpCount,
-          hideCaughtUp,
+          onlyCaughtUp,
         );
         if (visible === 0 && selectedSlug !== cat.slug) return null;
         return (
