@@ -1,7 +1,10 @@
 import { auth } from "@/lib/auth";
-import { isMangaDexImageHost } from "@/lib/cover-url";
+import { isMangaDexCoverUrl, isMangaDexImageHost } from "@/lib/cover-url";
 import { MD_UUID_RE } from "@/lib/mangadex-api";
-import { fetchMangaDexReaderImage } from "@/lib/reader/mangadex-page-image";
+import {
+  fetchMangaDexCoverImage,
+  fetchMangaDexReaderImage,
+} from "@/lib/reader/mangadex-page-image";
 import {
   imageRefererForHost,
   isAllowedReaderImageHost,
@@ -75,6 +78,17 @@ export async function GET(request: Request) {
   }
 
   try {
+    if (isMangaDexCoverUrl(target)) {
+      const image = await fetchMangaDexCoverImage(target);
+      if (!image) return imageUnavailable();
+      return new Response(Buffer.from(image.bytes), {
+        headers: {
+          "Content-Type": image.contentType,
+          "Cache-Control": "private, max-age=86400",
+        },
+      });
+    }
+
     if (isMangaDexImageHost(target.hostname)) {
       const params = new URL(request.url).searchParams;
       const chapterId = params.get("mdc");

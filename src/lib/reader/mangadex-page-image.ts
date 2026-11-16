@@ -1,4 +1,4 @@
-import { isMangaDexImageHost } from "@/lib/cover-url";
+import { isMangaDexCoverUrl, isMangaDexImageHost } from "@/lib/cover-url";
 import { MD_UUID_RE } from "@/lib/mangadex-api";
 import {
   isCompleteImageBytes,
@@ -9,6 +9,13 @@ import { fetchKeepingReferer } from "@/lib/reader/source-fetch";
 
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+/**
+ * uploads.mangadex.org sends browsers to an edge challenge. A non-browser
+ * User-Agent receives the cover bytes directly. Their own error text says
+ * not to send a browser UA unless this is a browser.
+ */
+const COVER_UA =
+  "BookWalker/0.1 (personal library reader; Mihon-compatible MangaDex source)";
 const UPLOADS_ORIGIN = "https://uploads.mangadex.org";
 const REPORT_URL = "https://api.mangadex.org/at-home/report";
 
@@ -108,6 +115,35 @@ async function downloadMangaDexImage(url: string): Promise<{
   } catch {
     reportAtHome(url, false, 0, Date.now() - started);
     return { ok: false, bytes: new Uint8Array(), contentType: "" };
+  }
+}
+
+export async function fetchMangaDexCoverImage(
+  target: URL,
+): Promise<{ bytes: Uint8Array; contentType: string } | null> {
+  if (!isMangaDexCoverUrl(target)) return null;
+
+  const url = `${UPLOADS_ORIGIN}${target.pathname}`;
+  try {
+    const res = await fetchKeepingReferer(url, {
+      headers: {
+        Accept: "image/avif,image/webp,image/png,image/jpeg,image/*,*/*",
+        "User-Agent": COVER_UA,
+        Referer: "https://mangadex.org/",
+      },
+    });
+    if (!res.ok) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (!isCompleteImageBytes(bytes)) return null;
+    return {
+      bytes,
+      contentType: sniffImageContentType(
+        bytes,
+        res.headers.get("content-type") ?? "",
+      ),
+    };
+  } catch {
+    return null;
   }
 }
 

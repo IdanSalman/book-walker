@@ -38,6 +38,9 @@ const COVER_REFERERS: { suffix: string; referer: string }[] = [
   { suffix: "openlibrary.org", referer: "https://openlibrary.org/" },
   { suffix: "archive.org", referer: "https://archive.org/" },
   { suffix: "books.google.com", referer: "https://books.google.com/" },
+  // Browser image requests to uploads.mangadex.org get a bot challenge (403).
+  { suffix: "mangadex.org", referer: "https://mangadex.org/" },
+  { suffix: "mangadex.network", referer: "https://mangadex.org/" },
 ];
 
 export function isMangaDexImageHost(hostname: string): boolean {
@@ -48,6 +51,12 @@ export function isMangaDexImageHost(hostname: string): boolean {
     host === "mangadex.network" ||
     host.endsWith(".mangadex.network")
   );
+}
+
+/** Cover files are `/covers/{mangaId}/{fileName}` plus optional `.256.jpg` / `.512.jpg`. */
+export function isMangaDexCoverUrl(url: URL): boolean {
+  if (!isMangaDexImageHost(url.hostname)) return false;
+  return /^\/covers\/[^/]+\/[^/]+$/i.test(url.pathname);
 }
 
 export function coverRefererForHost(hostname: string): string | undefined {
@@ -83,8 +92,9 @@ export function coverDisplayUrl(
 }
 
 /**
- * Browser-facing cover URL. MangaDex thumbs load directly; other CDNs go through
- * the image proxy so Referer/Origin from this site cannot blank the image.
+ * Browser-facing cover URL. MangaDex and other hotlink-protected CDNs go through
+ * the image proxy. MangaDex answers direct browser image requests with a bot
+ * challenge, so the thumbnail never reaches the page.
  */
 export function coverSrc(
   coverUrl: string,
@@ -97,7 +107,6 @@ export function coverSrc(
 
   try {
     const url = new URL(display);
-    if (isMangaDexImageHost(url.hostname)) return display;
     const proxyReferer = referer || coverRefererForHost(url.hostname);
     if (!proxyReferer) return display;
     const params = new URLSearchParams({ u: display, r: proxyReferer });
